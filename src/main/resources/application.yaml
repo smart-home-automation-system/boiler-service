@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: boiler-service
+    version: @project.version@
+  profiles:
+    active: home
+  webflux:
+    base-path: "/home/boiler"
+
+server:
+  port: 6200
+eureka:
+  client:
+    service-url:
+      defaultZone: http://service-discovery:6000/eureka
+    fetch-registry: true
+    register-with-eureka: true
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: local
+
+server:
+  port: 6007
+management:
+  server:
+    port: 8007
+
+eureka:
+  client:
+    enabled: false
