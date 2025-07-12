@@ -6,6 +6,12 @@ spring:
     active: home
   webflux:
     base-path: "/home/boiler"
+  rabbitmq:
+    username: guest
+    password: guest
+    addresses: rabbitmq
+    virtual-host: /boiler
+    consumer-name: boiler-service-consumer
 
 server:
   port: 6200
@@ -16,12 +22,20 @@ eureka:
     fetch-registry: true
     register-with-eureka: true
 
+shelly:
+  actor.uni.circulation.host: 10.78.30.47
 ---
 
 spring:
   config:
     activate:
       on-profile: local
+  rabbitmq:
+    username: boiler
+    password: boiler
+    addresses: 127.0.0.1:49898
+    virtual-host: /boiler
+    consumer-name: boiler-service-consumer
 
 server:
   port: 6007
