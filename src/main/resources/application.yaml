@@ -23,7 +23,28 @@ eureka:
     register-with-eureka: true
 
 shelly:
-  actor.uni.circulation.host: 10.78.30.47
+  actor:
+    uni.circulation:
+      host: 10.78.30.47
+      relay: 1
+    pro.boiler:
+      host: 10.78.30.20
+      relay:
+        furnace: 0
+        hot-water: 1
+        heating: 2
+    pro.floor:
+      host: 10.78.30.89
+      relay: 0
+
+logbook:
+  format:
+    style: http
+
+logging:
+  level:
+    org.zalando.logbook: trace
+
 ---
 
 spring:
