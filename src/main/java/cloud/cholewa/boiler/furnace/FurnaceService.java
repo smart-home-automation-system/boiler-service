@@ -25,50 +25,48 @@ public class FurnaceService {
     private final ShellyClient shellyClient;
 
     @RabbitListener(queues = "furnace")
-    void test(final DeviceRabbitMessage body) {
+    void handleFurnace(final DeviceRabbitMessage body) {
 
         if (DeviceType.valueOf(body.getName().toUpperCase()).equals(FURNACE)) {
             log.info("Incoming device message received furnace, enabled:{}", body.isEnabled());
 
             Mono.just(boiler.getFurnace())
-                .flatMap(this::canFurnaceStart)
-                .doOnNext(furnace -> updateDeviceStatus(furnace, body))
-                .zipWith(shellyClient.controlFurnace(body.isEnabled()))
-                .map(t -> {
-                    t.getT1().setWorking(Boolean.TRUE.equals(t.getT2().getIson()));
-                    return t.getT1();
-                })
+                .flatMap(furnace -> body.isEnabled() ? startFurnace(furnace) : stopFurnace(furnace))
+                .doOnNext(furnace -> updateLastMessage(furnace, body))
                 .subscribe(
                     furnace -> {
                     },
                     error -> log.error("Errors handling furnace: {}", error.getMessage())
-                )
-            ;
+                );
         }
-
     }
 
-    private Mono<DeviceStatus> canFurnaceStart(final DeviceStatus furnaceStatus) {
-        return Mono.just(furnaceStatus)
-            .flatMap(status -> shellyClient.getHotWaterPumpStatus()
-                .flatMap(response -> {
-                    if (Boolean.TRUE.equals(response.getIson())) {
-                        return Mono.just(status);
-                    }
-                    return Mono.empty();
-                })
-            )
-            .flatMap(status -> shellyClient.getHeatingPumpStatus()
-                .flatMap(response -> {
-                    if (Boolean.TRUE.equals(response.getIson())) {
-                        return Mono.just(status);
-                    }
-                    return Mono.empty();
-                })
-            );
+    private Mono<DeviceStatus> startFurnace(final DeviceStatus deviceStatus) {
+        return shouldFurnaceStart(deviceStatus)
+            .zipWith(shellyClient.controlFurnace(true))
+            .map(t -> {
+                t.getT1().setWorking(Boolean.TRUE.equals(t.getT2().getIson()));
+                return t.getT1();
+            });
     }
 
-    private void updateDeviceStatus(final DeviceStatus device, final DeviceRabbitMessage body) {
+    private Mono<DeviceStatus> stopFurnace(final DeviceStatus deviceStatus) {
+        return shellyClient.controlFurnace(false)
+            .flatMap(reply -> {
+                deviceStatus.setWorking(Boolean.TRUE.equals(reply.getIson()));
+                return Mono.just(deviceStatus);
+            });
+    }
+
+    private Mono<DeviceStatus> shouldFurnaceStart(final DeviceStatus furnaceStatus) {
+        return Mono.zip(shellyClient.getHotWaterPumpStatus(), shellyClient.getHeatingPumpStatus())
+            .map(t -> Boolean.TRUE.equals(t.getT1().getIson())
+                || Boolean.TRUE.equals(t.getT2().getIson()))
+            .filter(anyIsOn -> anyIsOn)
+            .map(isOn -> furnaceStatus);
+    }
+
+    private void updateLastMessage(final DeviceStatus device, final DeviceRabbitMessage body) {
         device.setLastMessage(LastMessage.builder()
             .timestamp(LocalDateTime.now())
             .message(body.toString())
