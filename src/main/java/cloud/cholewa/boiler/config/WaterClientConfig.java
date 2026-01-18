@@ -22,6 +22,6 @@ public class WaterClientConfig {
     private String path;
 
     public URI getUriBuilder(final UriBuilder uriBuilder) {
-        return uriBuilder.scheme(schema).host(host).port(port).build();
+        return uriBuilder.scheme(schema).host(host).port(port).path(path).build();
     }
 }
