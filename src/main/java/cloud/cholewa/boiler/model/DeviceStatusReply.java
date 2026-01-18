@@ -1,4 +1,4 @@
-package cloud.cholewa.boiler.api.model;
+package cloud.cholewa.boiler.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;

@@ -10,11 +10,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-import static cloud.cholewa.boiler.model.DeviceType.CIRCULATION;
-import static cloud.cholewa.boiler.model.DeviceType.FLOOR;
-import static cloud.cholewa.boiler.model.DeviceType.FURNACE;
-import static cloud.cholewa.boiler.model.DeviceType.HEATING;
-import static cloud.cholewa.boiler.model.DeviceType.HOT_WATER;
+import static cloud.cholewa.boiler.model.BoilerDeviceType.CIRCULATION;
+import static cloud.cholewa.boiler.model.BoilerDeviceType.FURNACE;
+import static cloud.cholewa.boiler.model.BoilerDeviceType.HEATING;
+import static cloud.cholewa.boiler.model.BoilerDeviceType.HOT_WATER;
 
 @Slf4j
 @Component
@@ -101,22 +100,6 @@ public class ShellyClient {
             .onErrorResume(Exception.class, ex -> Mono.error(new BoilerException(ex.getMessage())));
     }
 
-    public Mono<Relay> controlFloorPump(final boolean enable) {
-        return webClient
-            .get()
-            .uri(uriBuilder -> shellyConfig.getControlUriBuilder(uriBuilder, FLOOR)
-                .queryParam("turn", enable ? "on" : "off")
-                .build())
-            .retrieve()
-            .onStatus(
-                HttpStatusCode::isError, clientResponse -> Mono.error(
-                    new BoilerException("Floor pump issue check IP: " + shellyConfig.getFloorHost())
-                )
-            )
-            .bodyToMono(Relay.class)
-            .onErrorResume(Exception.class, ex -> Mono.error(new BoilerException(ex.getMessage())));
-    }
-
     public Mono<Relay> controlFurnace(final boolean enable) {
         return webClient
             .get()
@@ -126,7 +109,7 @@ public class ShellyClient {
             .retrieve()
             .onStatus(
                 HttpStatusCode::isError, clientResponse -> Mono.error(
-                    new BoilerException("Furnace issue check IP: " + shellyConfig.getFloorHost())
+                    new BoilerException("Furnace issue check IP: " + shellyConfig.getBoilerHost())
                 )
             )
             .bodyToMono(Relay.class)

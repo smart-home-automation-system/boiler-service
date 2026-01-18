@@ -1,10 +1,10 @@
-package cloud.cholewa.boiler.api.mapper;
+package cloud.cholewa.boiler.mapper;
 
-import cloud.cholewa.boiler.api.model.BoilerStatusReply;
-import cloud.cholewa.boiler.api.model.DeviceStatusReply;
-import cloud.cholewa.boiler.api.model.LastMessageReply;
+import cloud.cholewa.boiler.model.BoilerStatusReply;
+import cloud.cholewa.boiler.model.DeviceStatusReply;
+import cloud.cholewa.boiler.model.LastMessageReply;
 import cloud.cholewa.boiler.config.BoilerConfig;
-import cloud.cholewa.boiler.model.DeviceType;
+import cloud.cholewa.boiler.model.BoilerDeviceType;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -35,10 +35,9 @@ public class BoilerStatusMapper {
 
     private static Map<String, DeviceStatusReply> getPumpsReply(final BoilerConfig boiler) {
         return Map.ofEntries(
-            Map.entry(DeviceType.CIRCULATION.name().toLowerCase(), getCirculationPumpReply(boiler)),
-            Map.entry(DeviceType.HOT_WATER.name().toLowerCase(), getHotWaterPumpReply(boiler)),
-            Map.entry(DeviceType.HEATING.name().toLowerCase(), getHeatingPumpReply(boiler)),
-            Map.entry(DeviceType.FLOOR.name().toLowerCase(), getFloorPumpReply(boiler))
+            Map.entry(BoilerDeviceType.CIRCULATION.name().toLowerCase(), getCirculationPumpReply(boiler)),
+            Map.entry(BoilerDeviceType.HOT_WATER.name().toLowerCase(), getHotWaterPumpReply(boiler)),
+            Map.entry(BoilerDeviceType.HEATING.name().toLowerCase(), getHeatingPumpReply(boiler))
         );
     }
 
@@ -77,19 +76,6 @@ public class BoilerStatusMapper {
             .lastMessageReply(LastMessageReply.builder()
                 .timestamp(boiler.getHeating().getLastMessage().getTimestamp())
                 .message(boiler.getHeating().getLastMessage().getMessage())
-                .build())
-            .build();
-    }
-
-    private static DeviceStatusReply getFloorPumpReply(final BoilerConfig boiler) {
-        if (boiler.getFloor().getLastMessage() == null) {
-            return DeviceStatusReply.builder().build();
-        }
-        return DeviceStatusReply.builder()
-            .isWorking(boiler.getFloor().isWorking())
-            .lastMessageReply(LastMessageReply.builder()
-                .timestamp(boiler.getFloor().getLastMessage().getTimestamp())
-                .message(boiler.getFloor().getLastMessage().getMessage())
                 .build())
             .build();
     }

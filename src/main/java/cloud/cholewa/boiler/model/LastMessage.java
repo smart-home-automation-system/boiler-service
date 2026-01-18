@@ -8,7 +8,6 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class LastMessage {
-
     private LocalDateTime timestamp;
     private String message;
 }

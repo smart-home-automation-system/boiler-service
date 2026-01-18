@@ -1,8 +1,7 @@
 package cloud.cholewa.boiler.api;
 
-import cloud.cholewa.boiler.api.mapper.BoilerStatusMapper;
-import cloud.cholewa.boiler.api.model.BoilerStatusReply;
-import cloud.cholewa.boiler.config.BoilerConfig;
+import cloud.cholewa.boiler.model.BoilerStatusReply;
+import cloud.cholewa.boiler.service.BoilerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -15,11 +14,11 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class BoilerController {
 
-    private final BoilerConfig boiler;
+    private final BoilerService boilerService;
 
     @GetMapping("status")
-    Mono<ResponseEntity<BoilerStatusReply>> getStatus() {
-        return Mono.just(BoilerStatusMapper.toBoilerStatusReply(boiler))
+    Mono<ResponseEntity<BoilerStatusReply>> getBoilerStatus() {
+        return boilerService.getBoilerStatus()
             .map(ResponseEntity::ok)
             .defaultIfEmpty(ResponseEntity.notFound().build());
     }

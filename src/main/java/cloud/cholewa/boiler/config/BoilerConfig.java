@@ -12,5 +12,4 @@ public class BoilerConfig {
     private final DeviceStatus circulation = DeviceStatus.builder().build();
     private final DeviceStatus hotWater = DeviceStatus.builder().build();
     private final DeviceStatus heating = DeviceStatus.builder().build();
-    private final DeviceStatus floor = DeviceStatus.builder().build();
 }

@@ -1,7 +1,7 @@
 package cloud.cholewa.boiler.shelly;
 
 import cloud.cholewa.boiler.infrastructure.error.BoilerException;
-import cloud.cholewa.boiler.model.DeviceType;
+import cloud.cholewa.boiler.model.BoilerDeviceType;
 import lombok.Getter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
@@ -20,9 +20,6 @@ class ShellyConfig {
     @Value("${shelly.actor.pro.boiler.host}")
     private String boilerHost;
 
-    @Value("${shelly.actor.pro.floor.host}")
-    private String floorHost;
-
     @Value("${shelly.actor.pro.boiler.relay.furnace}")
     private String relayFurnace;
 
@@ -38,26 +35,23 @@ class ShellyConfig {
     @Value("${shelly.actor.pro.floor.relay}")
     private String relayFloorPump;
 
-    public UriBuilder getControlUriBuilder(final UriBuilder uriBuilder, DeviceType deviceType) {
+    public UriBuilder getControlUriBuilder(final UriBuilder uriBuilder, BoilerDeviceType boilerDeviceType) {
 
-        return switch (deviceType) {
+        return switch (boilerDeviceType) {
             case CIRCULATION -> uriBuilder.scheme("http").host(circulationPumpHost).path(RELAY_PATH + relayCirculationPump);
             case HOT_WATER -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayHotWaterPump);
             case HEATING -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayHeating);
             case FURNACE -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayFurnace);
-            case FLOOR -> uriBuilder.scheme("http").host(floorHost).path(RELAY_PATH + relayFloorPump);
         };
     }
 
-    public UriBuilder getStatusUriBuilder(final UriBuilder uriBuilder, DeviceType deviceType) {
-        return switch (deviceType) {
+    public UriBuilder getStatusUriBuilder(final UriBuilder uriBuilder, BoilerDeviceType boilerDeviceType) {
+        return switch (boilerDeviceType) {
             case HOT_WATER ->
                 uriBuilder.scheme("http").host(boilerHost).path(PRO4_STATUS_PATH).queryParam("id", relayHotWaterPump);
             case HEATING ->
                 uriBuilder.scheme("http").host(boilerHost).path(PRO4_STATUS_PATH).queryParam("id", relayHeating);
-            case FLOOR ->
-                uriBuilder.scheme("http").host(floorHost).path(PRO4_STATUS_PATH).queryParam("id", relayFloorPump);
-            default -> throw new BoilerException("Unexpected value for getting status of device: " + deviceType);
+            default -> throw new BoilerException("Unexpected value for getting status of device: " + boilerDeviceType);
         };
     }
 }

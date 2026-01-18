@@ -1,10 +1,8 @@
 package cloud.cholewa.boiler.pump;
 
 import cloud.cholewa.boiler.config.BoilerConfig;
-import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.boiler.model.DeviceRabbitMessage;
 import cloud.cholewa.boiler.model.DeviceStatus;
-import cloud.cholewa.boiler.model.DeviceType;
 import cloud.cholewa.boiler.model.LastMessage;
 import cloud.cholewa.boiler.shelly.ShellyClient;
 import lombok.RequiredArgsConstructor;
@@ -121,23 +119,6 @@ public class PumpService {
                 }
                 return Mono.just(deviceStatus);
             });
-    }
-
-    private void handleFloorPump(final DeviceRabbitMessage body) {
-        logMessageDetails(body);
-
-        Mono.just(boiler.getFloor())
-            .doOnNext(floor -> updateLastMessage(floor, body))
-            .zipWith(shellyClient.controlFloorPump(body.isEnabled()))
-            .map(t -> {
-                t.getT1().setWorking(Boolean.TRUE.equals(t.getT2().getIson()));
-                return t.getT1();
-            })
-            .subscribe(
-                floor -> {
-                },
-                error -> log.error("Errors handling floor pump: {}", error.getMessage())
-            );
     }
 
     private void logMessageDetails(DeviceRabbitMessage body) {

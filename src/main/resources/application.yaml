@@ -6,12 +6,6 @@ spring:
     active: home
   webflux:
     base-path: "/home/boiler"
-  rabbitmq:
-    username: guest
-    password: guest
-    addresses: rabbitmq
-    virtual-host: /boiler
-    consumer-name: boiler-service-consumer
 
 server:
   port: 6200
@@ -51,12 +45,6 @@ spring:
   config:
     activate:
       on-profile: local
-  rabbitmq:
-    username: boiler
-    password: boiler
-    addresses: 127.0.0.1:55854
-    virtual-host: /boiler
-    consumer-name: boiler-service-consumer
 
 server:
   port: 6007
