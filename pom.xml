@@ -39,9 +39,11 @@
 		<logbook.version>3.12.3</logbook.version>
 		<mapstruct.version>1.6.3</mapstruct.version>
 		<spring-cloud.version>2025.1.0</spring-cloud.version>
+		<mockwebserver.version>5.3.2</mockwebserver.version>
 
 		<!--  internal dependencies versions-->
 		<cholewa-commons.version>0.2.1</cholewa-commons.version>
+		<smart-home-sdk.version>0.1.2</smart-home-sdk.version>
 		<shelly-client.version>0.0.8</shelly-client.version>
 
 		<!--  plugins versions-->
@@ -71,6 +73,11 @@
 		</dependency>
 		<dependency>
 			<groupId>cloud.cholewa</groupId>
+			<artifactId>smart-home-sdk</artifactId>
+			<version>${smart-home-sdk.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>cloud.cholewa</groupId>
 			<artifactId>shelly-client</artifactId>
 			<version>${shelly-client.version}</version>
 		</dependency>
@@ -80,17 +87,17 @@
 			<artifactId>spring-boot-starter-webflux</artifactId>
 		</dependency>
 
-<!--		<dependency>-->
-<!--			<groupId>org.zalando</groupId>-->
-<!--			<artifactId>logbook-spring-boot-webflux-autoconfigure</artifactId>-->
-<!--			<version>${logbook.version}</version>-->
-<!--			<exclusions>-->
-<!--				<exclusion>-->
-<!--					<groupId>org.apiguardian</groupId>-->
-<!--					<artifactId>apiguardian-api</artifactId>-->
-<!--				</exclusion>-->
-<!--			</exclusions>-->
-<!--		</dependency>-->
+		<!--		<dependency>-->
+		<!--			<groupId>org.zalando</groupId>-->
+		<!--			<artifactId>logbook-spring-boot-webflux-autoconfigure</artifactId>-->
+		<!--			<version>${logbook.version}</version>-->
+		<!--			<exclusions>-->
+		<!--				<exclusion>-->
+		<!--					<groupId>org.apiguardian</groupId>-->
+		<!--					<artifactId>apiguardian-api</artifactId>-->
+		<!--				</exclusion>-->
+		<!--			</exclusions>-->
+		<!--		</dependency>-->
 
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>
@@ -127,6 +134,12 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webflux-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.squareup.okhttp3</groupId>
+			<artifactId>mockwebserver</artifactId>
+			<version>${mockwebserver.version}</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

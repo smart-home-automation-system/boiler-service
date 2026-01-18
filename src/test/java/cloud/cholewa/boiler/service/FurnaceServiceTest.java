@@ -1,29 +1,10 @@
-package cloud.cholewa.boiler.furnace;
+package cloud.cholewa.boiler.service;
 
-import cloud.cholewa.boiler.config.BoilerConfig;
-import cloud.cholewa.boiler.model.DeviceRabbitMessage;
-import cloud.cholewa.boiler.shelly.ShellyClient;
-import cloud.cholewa.shelly.model.Relay;
-import cloud.cholewa.shelly.model.ShellyProRelayResponse;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-import reactor.core.publisher.Mono;
-
-import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class FurnaceServiceTest {

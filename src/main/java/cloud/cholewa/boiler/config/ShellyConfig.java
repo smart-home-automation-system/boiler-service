@@ -1,4 +1,4 @@
-package cloud.cholewa.boiler.shelly;
+package cloud.cholewa.boiler.config;
 
 import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.boiler.model.BoilerDeviceType;
@@ -9,13 +9,10 @@ import org.springframework.web.util.UriBuilder;
 
 @Getter
 @Configuration
-class ShellyConfig {
+public class ShellyConfig {
 
     private static final String RELAY_PATH = "relay/";
     private static final String PRO4_STATUS_PATH = "rpc/Switch.GetStatus";
-
-    @Value("${shelly.actor.uni.circulation.host}")
-    private String circulationPumpHost;
 
     @Value("${shelly.actor.pro.boiler.host}")
     private String boilerHost;
@@ -23,22 +20,15 @@ class ShellyConfig {
     @Value("${shelly.actor.pro.boiler.relay.furnace}")
     private String relayFurnace;
 
-    @Value("${shelly.actor.uni.circulation.relay}")
-    private String relayCirculationPump;
-
     @Value("${shelly.actor.pro.boiler.relay.hot-water}")
     private String relayHotWaterPump;
 
     @Value("${shelly.actor.pro.boiler.relay.heating}")
     private String relayHeating;
 
-    @Value("${shelly.actor.pro.floor.relay}")
-    private String relayFloorPump;
-
     public UriBuilder getControlUriBuilder(final UriBuilder uriBuilder, BoilerDeviceType boilerDeviceType) {
 
         return switch (boilerDeviceType) {
-            case CIRCULATION -> uriBuilder.scheme("http").host(circulationPumpHost).path(RELAY_PATH + relayCirculationPump);
             case HOT_WATER -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayHotWaterPump);
             case HEATING -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayHeating);
             case FURNACE -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayFurnace);

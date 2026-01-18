@@ -1,10 +1,10 @@
 package cloud.cholewa.boiler.mapper;
 
+import cloud.cholewa.boiler.config.BoilerConfig;
+import cloud.cholewa.boiler.model.BoilerDeviceType;
 import cloud.cholewa.boiler.model.BoilerStatusReply;
 import cloud.cholewa.boiler.model.DeviceStatusReply;
 import cloud.cholewa.boiler.model.LastMessageReply;
-import cloud.cholewa.boiler.config.BoilerConfig;
-import cloud.cholewa.boiler.model.BoilerDeviceType;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -35,34 +35,20 @@ public class BoilerStatusMapper {
 
     private static Map<String, DeviceStatusReply> getPumpsReply(final BoilerConfig boiler) {
         return Map.ofEntries(
-            Map.entry(BoilerDeviceType.CIRCULATION.name().toLowerCase(), getCirculationPumpReply(boiler)),
             Map.entry(BoilerDeviceType.HOT_WATER.name().toLowerCase(), getHotWaterPumpReply(boiler)),
             Map.entry(BoilerDeviceType.HEATING.name().toLowerCase(), getHeatingPumpReply(boiler))
         );
     }
 
-    private static DeviceStatusReply getCirculationPumpReply(final BoilerConfig boiler) {
-        if (boiler.getCirculation().getLastMessage() == null) {
-            return DeviceStatusReply.builder().build();
-        }
-        return DeviceStatusReply.builder()
-            .isWorking(boiler.getCirculation().isWorking())
-            .lastMessageReply(LastMessageReply.builder()
-                .timestamp(boiler.getCirculation().getLastMessage().getTimestamp())
-                .message(boiler.getCirculation().getLastMessage().getMessage())
-                .build())
-            .build();
-    }
-
     private static DeviceStatusReply getHotWaterPumpReply(final BoilerConfig boiler) {
-        if (boiler.getHotWater().getLastMessage() == null) {
+        if (boiler.getWater().getLastMessage() == null) {
             return DeviceStatusReply.builder().build();
         }
         return DeviceStatusReply.builder()
-            .isWorking(boiler.getHotWater().isWorking())
+            .isWorking(boiler.getWater().isWorking())
             .lastMessageReply(LastMessageReply.builder()
-                .timestamp(boiler.getHotWater().getLastMessage().getTimestamp())
-                .message(boiler.getHotWater().getLastMessage().getMessage())
+                .timestamp(boiler.getWater().getLastMessage().getTimestamp())
+                .message(boiler.getWater().getLastMessage().getMessage())
                 .build())
             .build();
     }

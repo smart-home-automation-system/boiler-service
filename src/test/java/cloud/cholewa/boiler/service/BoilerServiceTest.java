@@ -25,8 +25,7 @@ class BoilerServiceTest {
     @Test
     void should_return_boiler_status() {
         when(boilerConfig.getFurnace()).thenReturn(DeviceStatus.builder().build());
-        when(boilerConfig.getCirculation()).thenReturn(DeviceStatus.builder().build());
-        when(boilerConfig.getHotWater()).thenReturn(DeviceStatus.builder().build());
+        when(boilerConfig.getWater()).thenReturn(DeviceStatus.builder().build());
         when(boilerConfig.getHeating()).thenReturn(DeviceStatus.builder().build());
 
         sut.getBoilerStatus()

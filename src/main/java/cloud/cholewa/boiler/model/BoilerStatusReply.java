@@ -10,7 +10,6 @@ import java.util.Map;
 @Builder
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public class BoilerStatusReply {
-
     private DeviceStatusReply furnace;
     private Map<String, DeviceStatusReply> pumps;
 }

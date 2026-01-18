@@ -17,13 +17,13 @@ public class HeatingClient {
     private final HeatingClientConfig heatingClientConfig;
     private final WebClient heatingWebClient;
 
-    Mono<SystemActiveReply> querySystemActive() {
+    public Mono<SystemActiveReply> querySystemActive() {
         return heatingWebClient.get()
             .uri(heatingClientConfig::getUriBuilder)
             .retrieve()
             .bodyToMono(SystemActiveReply.class)
             .doOnError(ex -> log.error("Error while querying system active status {}", ex.getMessage()))
-            .doOnSubscribe(subscription -> log.debug("Subscribing to system active status query"))
-            .onErrorMap(ex -> new BoilerException("Error calling heating system"));
+            .doOnSubscribe(subscription -> log.info("Querying heating-service for active status"))
+            .onErrorMap(ex -> new BoilerException("Failed to query heating-service active status"));
     }
 }

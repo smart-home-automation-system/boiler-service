@@ -17,7 +17,7 @@ public class WaterClient {
     private final WaterClientConfig waterClientConfig;
     private final WebClient waterWebClient;
 
-    Mono<SystemActiveReply> querySystemActive() {
+    public Mono<SystemActiveReply> querySystemActive() {
         return waterWebClient.get()
             .uri(waterClientConfig::getUriBuilder)
             .retrieve()
