@@ -3,18 +3,14 @@ package cloud.cholewa.boiler.furnace;
 import cloud.cholewa.boiler.config.BoilerConfig;
 import cloud.cholewa.boiler.model.DeviceRabbitMessage;
 import cloud.cholewa.boiler.model.DeviceStatus;
-import cloud.cholewa.boiler.model.DeviceType;
 import cloud.cholewa.boiler.model.LastMessage;
 import cloud.cholewa.boiler.shelly.ShellyClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
-
-import static cloud.cholewa.boiler.model.DeviceType.FURNACE;
 
 @Slf4j
 @Component
@@ -24,22 +20,22 @@ public class FurnaceService {
     private final BoilerConfig boiler;
     private final ShellyClient shellyClient;
 
-    @RabbitListener(queues = "furnace")
-    void handleFurnace(final DeviceRabbitMessage body) {
-
-        if (DeviceType.valueOf(body.getName().toUpperCase()).equals(FURNACE)) {
-            log.info("Incoming device message received furnace, enabled:{}", body.isEnabled());
-
-            Mono.just(boiler.getFurnace())
-                .flatMap(furnace -> body.isEnabled() ? startFurnace(furnace) : stopFurnace(furnace))
-                .doOnNext(furnace -> updateLastMessage(furnace, body))
-                .subscribe(
-                    furnace -> {
-                    },
-                    error -> log.error("Errors handling furnace: {}", error.getMessage())
-                );
-        }
-    }
+//    @RabbitListener(queues = "furnace")
+//    void handleFurnace(final DeviceRabbitMessage body) {
+//
+//        if (DeviceType.valueOf(body.getName().toUpperCase()).equals(FURNACE)) {
+//            log.info("Incoming device message received furnace, enabled:{}", body.isEnabled());
+//
+//            Mono.just(boiler.getFurnace())
+//                .flatMap(furnace -> body.isEnabled() ? startFurnace(furnace) : stopFurnace(furnace))
+//                .doOnNext(furnace -> updateLastMessage(furnace, body))
+//                .subscribe(
+//                    furnace -> {
+//                    },
+//                    error -> log.error("Errors handling furnace: {}", error.getMessage())
+//                );
+//        }
+//    }
 
     private Mono<DeviceStatus> startFurnace(final DeviceStatus deviceStatus) {
         return shouldFurnaceStart(deviceStatus)

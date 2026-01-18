@@ -54,7 +54,7 @@ spring:
   rabbitmq:
     username: boiler
     password: boiler
-    addresses: 127.0.0.1:49898
+    addresses: 127.0.0.1:55854
     virtual-host: /boiler
     consumer-name: boiler-service-consumer
 

@@ -1,6 +1,7 @@
 package cloud.cholewa.boiler.pump;
 
 import cloud.cholewa.boiler.config.BoilerConfig;
+import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.boiler.model.DeviceRabbitMessage;
 import cloud.cholewa.boiler.model.DeviceStatus;
 import cloud.cholewa.boiler.model.DeviceType;
@@ -8,7 +9,6 @@ import cloud.cholewa.boiler.model.LastMessage;
 import cloud.cholewa.boiler.shelly.ShellyClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -24,23 +24,23 @@ public class PumpService {
 
     private final ShellyClient shellyClient;
 
-    @RabbitListener(queues = "pumps")
-    void handlePumps(final DeviceRabbitMessage body) {
-
-        switch (DeviceType.valueOf(body.getName().toUpperCase())) {
-            case CIRCULATION -> handleCirculationPump(body);
-            case HOT_WATER -> handleHotWaterPump(body);
-            case HEATING -> handleHeatingPump(body);
-            case FLOOR -> handleFloorPump(body);
-            default -> log.error("Unknown device type {}", body);
-        }
-    }
+//    @RabbitListener(queues = "pumps")
+//    void handlePumps(final DeviceRabbitMessage body) {
+//
+//        switch (DeviceType.valueOf(body.getName().toUpperCase())) {
+//            case CIRCULATION -> handleCirculationPump(body);
+//            case HOT_WATER -> handleHotWaterPump(body);
+//            case HEATING -> handleHeatingPump(body);
+//            case FLOOR -> handleFloorPump(body);
+//            default -> throw new BoilerException("Unknown device type {}" + body);
+//        }
+//    }
 
     private void handleCirculationPump(final DeviceRabbitMessage body) {
         logMessageDetails(body);
 
         Mono.just(boiler.getCirculation())
-            .doOnNext(circulation -> updateDeviceStatus(circulation, body))
+            .doOnNext(circulation -> updateLastMessage(circulation, body))
             .zipWith(shellyClient.controlCirculationPump(body.isEnabled()))
             .map(t -> {
                 t.getT1().setWorking(Boolean.TRUE.equals(t.getT2().getIson()));
@@ -59,7 +59,7 @@ public class PumpService {
         logMessageDetails(body);
 
         Mono.just(boiler.getHotWater())
-            .doOnNext(hotWater -> updateDeviceStatus(hotWater, body))
+            .doOnNext(hotWater -> updateLastMessage(hotWater, body))
             .flatMap(this::optionallyDisableHeatingPump)
             .zipWith(shellyClient.controlHotWaterPump(body.isEnabled()))
             .map(t -> {
@@ -98,7 +98,7 @@ public class PumpService {
         logMessageDetails(body);
 
         Mono.just(boiler.getHeating())
-            .doOnNext(heating -> updateDeviceStatus(heating, body))
+            .doOnNext(heating -> updateLastMessage(heating, body))
             .flatMap(this::checkPermissionsToEnableHeatingPump)
             .zipWith(shellyClient.controlHeatingPump(body.isEnabled()))
             .map(t -> {
@@ -127,7 +127,7 @@ public class PumpService {
         logMessageDetails(body);
 
         Mono.just(boiler.getFloor())
-            .doOnNext(floor -> updateDeviceStatus(floor, body))
+            .doOnNext(floor -> updateLastMessage(floor, body))
             .zipWith(shellyClient.controlFloorPump(body.isEnabled()))
             .map(t -> {
                 t.getT1().setWorking(Boolean.TRUE.equals(t.getT2().getIson()));
@@ -144,7 +144,7 @@ public class PumpService {
         log.info("Incoming device message received pump={}, enabled:{}", body.getName(), body.isEnabled());
     }
 
-    private void updateDeviceStatus(final DeviceStatus device, final DeviceRabbitMessage body) {
+    private void updateLastMessage(final DeviceStatus device, final DeviceRabbitMessage body) {
         device.setLastMessage(LastMessage.builder()
             .timestamp(LocalDateTime.now())
             .message(body.toString())
