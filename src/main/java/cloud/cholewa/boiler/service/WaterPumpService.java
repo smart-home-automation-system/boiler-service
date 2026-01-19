@@ -22,25 +22,35 @@ public class WaterPumpService {
 
     public Mono<Void> controlPump(final SystemActiveReply waterSystemActiveReply) {
         return updatePumpStatus()
-            .then(setPumpState(waterSystemActiveReply));
+            .then(setPumpState(waterSystemActiveReply))
+            .then(optionallyDisableHeatingPump());
     }
 
     private Mono<Void> updatePumpStatus() {
-        return Mono.fromCallable(() -> boilerConfig.getWater().getLastMessage())
+        return Mono.fromCallable(this::getLastMessage)
             .filter(this::notUpdatedWithinLastMinute)
-            .doOnNext(lastMessage -> log.info("Updating water pump status"))
+            .doOnNext(lastMessage -> log.info("Querying water pump status"))
             .flatMap(lastMessage -> shellyClient.getWaterPumpStatus())
             .doOnNext(this::updateBoilerConfig)
             .then();
     }
 
-    private void updateBoilerConfig(final ShellyProRelayResponse shellyProRelayResponse) {
-        boilerConfig.getWater().setWorking(Boolean.TRUE.equals(shellyProRelayResponse.getIson()));
-        boilerConfig.getWater().setLastMessage(new LastMessage("Pump status updated"));
+    private LastMessage getLastMessage() {
+        LastMessage lastMessage = new LastMessage("No status update available");
+        lastMessage.setTimestamp(LocalDateTime.MIN);
+
+        return boilerConfig.getWater().getLastMessage() == null
+            ? lastMessage
+            : boilerConfig.getWater().getLastMessage();
     }
 
     private boolean notUpdatedWithinLastMinute(final LastMessage lastMessage) {
-        return !lastMessage.getTimestamp().isAfter(LocalDateTime.now().minusMinutes(1));
+        return lastMessage.getTimestamp().isBefore(LocalDateTime.now().minusMinutes(1));
+    }
+
+    private void updateBoilerConfig(final ShellyProRelayResponse shellyProRelayResponse) {
+        boilerConfig.getWater().setWorking(Boolean.TRUE.equals(shellyProRelayResponse.getIson()));
+        boilerConfig.getWater().setLastMessage(new LastMessage("Pump status updated"));
     }
 
     private Mono<Void> setPumpState(final SystemActiveReply waterSystemActiveReply) {
@@ -59,5 +69,21 @@ public class WaterPumpService {
                 boilerConfig.getWater().setLastMessage(new LastMessage("Pump state changed to: " + relay.getIson()));
             })
             .then();
+    }
+
+    private Mono<Void> optionallyDisableHeatingPump() {
+        return Mono.defer(() -> {
+            if (boilerConfig.getHeating().isWorking() && boilerConfig.getWater().isWorking()) {
+                return shellyClient.controlHeatingPump(false)
+                    .doOnNext(response -> {
+                        log.info("Heating pump disabled due to water pump being active");
+                        boilerConfig.getHeating().setWorking(Boolean.TRUE.equals(response.getIson()));
+                        boilerConfig.getHeating().setLastMessage(new LastMessage(
+                            "Heating pump disabled due to water pump being active"));
+                    })
+                    .then();
+            }
+            return Mono.empty();
+        });
     }
 }
