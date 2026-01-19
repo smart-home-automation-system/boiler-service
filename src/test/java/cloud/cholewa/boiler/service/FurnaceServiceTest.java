@@ -1,117 +1,280 @@
 package cloud.cholewa.boiler.service;
 
+import cloud.cholewa.boiler.client.ShellyClient;
+import cloud.cholewa.boiler.config.BoilerConfig;
+import cloud.cholewa.boiler.model.LastMessage;
+import cloud.cholewa.shelly.model.Relay;
+import cloud.cholewa.shelly.model.ShellyProRelayResponse;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import java.time.LocalDateTime;
+
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class FurnaceServiceTest {
 
-//    private FurnaceService sut;
-//    private BoilerConfig boilerConfig;
-//    @Mock
-//    private ShellyClient shellyClient;
-//
-//    @BeforeEach
-//    void setUp() {
-//        boilerConfig = new BoilerConfig();
-//
-//        sut = new FurnaceService(boilerConfig, shellyClient);
-//    }
-//
-//    @Test
-//    void shouldThrowIllegalArgumentExceptionWhenInvalidDeviceType() {
-//        DeviceRabbitMessage body = DeviceRabbitMessage.builder().name(("InvalidDeviceType")).build();
-//
-//        assertThatExceptionOfType(IllegalArgumentException.class)
-//            .isThrownBy(() -> sut.handleFurnace(body));
-//    }
-//
-//    @ParameterizedTest(name = "{0}")
-//    @MethodSource("furnaceConfiguration")
-//    void shouldEnableFurnaceWhenBothPumpsAreWorking(
-//        final String name,
-//        final DeviceRabbitMessage body,
-//        final ShellyProRelayResponse hotWaterPumpResponse,
-//        final ShellyProRelayResponse heatingPumpResponse,
-//        final Relay furnaceRelayResponse,
-//        final int numberHotWaterPump,
-//        final int numberHeatingPump,
-//        final int numberFurnace,
-//        final boolean statusFurnace
-//    ) {
-//        lenient().when(shellyClient.getHeatingPumpStatus()).thenReturn(Mono.just(hotWaterPumpResponse));
-//        lenient().when(shellyClient.getHotWaterPumpStatus()).thenReturn(Mono.just(heatingPumpResponse));
-//        when(shellyClient.controlFurnace(anyBoolean())).thenReturn(Mono.just(furnaceRelayResponse));
-//
-//        sut.handleFurnace(body);
-//
-//        verify(shellyClient, Mockito.times(numberHotWaterPump)).getHotWaterPumpStatus();
-//        verify(shellyClient, Mockito.times(numberHeatingPump)).getHeatingPumpStatus();
-//        verify(shellyClient, Mockito.times(numberFurnace)).controlFurnace(anyBoolean());
-//        assertThat(boilerConfig.getFurnace().isWorking()).isEqualTo(statusFurnace);
-//    }
-//
-//    private static Stream<Arguments> furnaceConfiguration() {
-//        return Stream.of(
-//            Arguments.of(
-//                "set furnace on, both pumps are working",
-//                DeviceRabbitMessage.builder().name("furnace").enabled(true).build(),
-//                ShellyProRelayResponse.builder().ison(true).build(),
-//                ShellyProRelayResponse.builder().ison(true).build(),
-//                Relay.builder().ison(true).build(),
-//                1, 1, 1, true
-//            ),
-//            Arguments.of(
-//                "set furnace on, when heating pump is working",
-//                DeviceRabbitMessage.builder().name("furnace").enabled(true).build(),
-//                ShellyProRelayResponse.builder().ison(false).build(),
-//                ShellyProRelayResponse.builder().ison(true).build(),
-//                Relay.builder().ison(true).build(),
-//                1, 1, 1, true
-//            ),
-//            Arguments.of(
-//                "set furnace on, when hot water pump is working",
-//                DeviceRabbitMessage.builder().name("furnace").enabled(true).build(),
-//                ShellyProRelayResponse.builder().ison(true).build(),
-//                ShellyProRelayResponse.builder().ison(false).build(),
-//                Relay.builder().ison(true).build(),
-//                1, 1, 1, true
-//            ),
-//            Arguments.of(
-//                "dont set furnace on, when no pumps are working",
-//                DeviceRabbitMessage.builder().name("furnace").enabled(true).build(),
-//                ShellyProRelayResponse.builder().ison(false).build(),
-//                ShellyProRelayResponse.builder().ison(false).build(),
-//                Relay.builder().ison(false).build(),
-//                1, 1, 1, false
-//            ),
-//            Arguments.of(
-//                "set furnace off, even if heating pump is working",
-//                DeviceRabbitMessage.builder().name("furnace").enabled(false).build(),
-//                ShellyProRelayResponse.builder().ison(true).build(),
-//                ShellyProRelayResponse.builder().ison(true).build(),
-//                Relay.builder().ison(false).build(),
-//                0, 0, 1, false
-//            ),
-//            Arguments.of(
-//                "set furnace off, even if hot water pump is working",
-//                DeviceRabbitMessage.builder().name("furnace").enabled(false).build(),
-//                ShellyProRelayResponse.builder().ison(true).build(),
-//                ShellyProRelayResponse.builder().ison(false).build(),
-//                Relay.builder().ison(false).build(),
-//                0, 0, 1, false
-//            ),
-//            Arguments.of(
-//                "set furnace off, even if both pumps are working",
-//                DeviceRabbitMessage.builder().name("furnace").enabled(false).build(),
-//                ShellyProRelayResponse.builder().ison(false).build(),
-//                ShellyProRelayResponse.builder().ison(true).build(),
-//                Relay.builder().ison(false).build(),
-//                0, 0, 1, false
-//            )
-//        );
-//    }
+    @Spy
+    private BoilerConfig boilerConfig;
+    @Mock(answer = Answers.RETURNS_SMART_NULLS)
+    private ShellyClient shellyClient;
+
+    @InjectMocks
+    private FurnaceService sut;
+
+    @Test
+    void should_control_furnace_when_last_message_is_null() {
+        boilerConfig.getFurnace().setLastMessage(null);
+
+        when(shellyClient.getFurnaceStatus())
+            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(true).build()));
+
+        when(shellyClient.controlFurnace(anyBoolean()))
+            .thenReturn(Mono.just(Relay.builder().ison(true).build()));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(shellyClient, times(1)).getFurnaceStatus();
+        verify(shellyClient, times(1)).controlFurnace(false);
+
+        verifyNoMoreInteractions(shellyClient);
+    }
+
+    @Test
+    void should_not_fetch_status_and_enable_furnace_when_heating_pum_working() {
+        boilerConfig.getHeating().setWorking(true);
+        boilerConfig.getFurnace().setLastMessage(newMessage());
+        boilerConfig.getFurnace().setWorking(false);
+
+        when(shellyClient.controlFurnace(true))
+            .thenReturn(Mono.just(Relay.builder().ison(true).build()));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(shellyClient, never()).getFurnaceStatus();
+        verify(shellyClient, times(1)).controlFurnace(true);
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isTrue();
+    }
+
+    @Test
+    void should_not_fetch_status_and_enable_furnace_when_water_pum_working() {
+        boilerConfig.getFurnace().setLastMessage(newMessage());
+        boilerConfig.getFurnace().setWorking(false);
+        boilerConfig.getWater().setWorking(true);
+
+        when(shellyClient.controlFurnace(true))
+            .thenReturn(Mono.just(Relay.builder().ison(true).build()));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(shellyClient, never()).getFurnaceStatus();
+        verify(shellyClient, times(1)).controlFurnace(true);
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isTrue();
+    }
+
+    @Test
+    void should_fetch_status_and_enable_furnace_when_heating_pum_working() {
+        boilerConfig.getFurnace().setLastMessage(oldMessage());
+        boilerConfig.getFurnace().setWorking(false);
+        boilerConfig.getHeating().setWorking(true);
+
+        when(shellyClient.getFurnaceStatus())
+            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(false).build()));
+
+        when(shellyClient.controlFurnace(true))
+            .thenReturn(Mono.just(Relay.builder().ison(true).build()));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(shellyClient, times(1)).getFurnaceStatus();
+        verify(shellyClient, times(1)).controlFurnace(true);
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isTrue();
+    }
+
+    @Test
+    void should_fetch_status_and_enable_furnace_when_water_pum_working() {
+        boilerConfig.getFurnace().setLastMessage(oldMessage());
+        boilerConfig.getFurnace().setWorking(false);
+        boilerConfig.getWater().setWorking(true);
+
+        when(shellyClient.getFurnaceStatus())
+            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(false).build()));
+
+        when(shellyClient.controlFurnace(true))
+            .thenReturn(Mono.just(Relay.builder().ison(true).build()));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(shellyClient, times(1)).getFurnaceStatus();
+        verify(shellyClient, times(1)).controlFurnace(true);
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isTrue();
+    }
+
+    @Test
+    void should_not_fetch_status_and_disable_furnace_when_no_pum_working() {
+        boilerConfig.getFurnace().setLastMessage(newMessage());
+        boilerConfig.getFurnace().setWorking(true);
+
+        when(shellyClient.controlFurnace(false))
+            .thenReturn(Mono.just(Relay.builder().ison(false).build()));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(shellyClient, never()).getFurnaceStatus();
+        verify(shellyClient, times(1)).controlFurnace(false);
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isFalse();
+    }
+
+    @Test
+    void should_fetch_status_and_disable_furnace_when_no_pum_working() {
+        boilerConfig.getFurnace().setLastMessage(oldMessage());
+        boilerConfig.getFurnace().setWorking(true);
+
+        when(shellyClient.getFurnaceStatus())
+            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(true).build()));
+
+        when(shellyClient.controlFurnace(false))
+            .thenReturn(Mono.just(Relay.builder().ison(false).build()));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(shellyClient, times(1)).getFurnaceStatus();
+        verify(shellyClient, times(1)).controlFurnace(false);
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isFalse();
+    }
+
+    @Test
+    void should_not_fetch_status_and_not_control_furnace_when_any_pum_working_and_furnace_is_active() {
+        boilerConfig.getFurnace().setLastMessage(newMessage());
+        boilerConfig.getFurnace().setWorking(true);
+        boilerConfig.getHeating().setWorking(true);
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(shellyClient, never()).getFurnaceStatus();
+        verify(shellyClient, never()).controlFurnace(anyBoolean());
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isTrue();
+    }
+
+    @Test
+    void should_fetch_status_and_not_control_furnace_when_no_pum_working_and_furnace_is_inactive() {
+        boilerConfig.getFurnace().setLastMessage(oldMessage());
+
+        when(shellyClient.getFurnaceStatus())
+            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(false).build()));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        verify(shellyClient, times(1)).getFurnaceStatus();
+        verify(shellyClient, never()).controlFurnace(anyBoolean());
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isFalse();
+    }
+
+    @Test
+    void should_throw_exception_when_fetch_status_fail() {
+        boilerConfig.getFurnace().setLastMessage(oldMessage());
+        boilerConfig.getFurnace().setWorking(true);
+
+        when(shellyClient.getFurnaceStatus())
+            .thenReturn(Mono.error(new RuntimeException("Test exception")));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyError();
+
+        verify(shellyClient, times(1)).getFurnaceStatus();
+        verify(shellyClient, never()).controlFurnace(anyBoolean());
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isTrue();
+    }
+
+    @Test
+    void should_throw_exception_when_control_furnace_fail() {
+        boilerConfig.getFurnace().setLastMessage(newMessage());
+        boilerConfig.getFurnace().setWorking(true);
+
+        when(shellyClient.controlFurnace(false))
+            .thenReturn(Mono.error(new RuntimeException("Test exception")));
+
+        sut.controlFurnace()
+            .as(StepVerifier::create)
+            .verifyError();
+
+        verify(shellyClient, never()).getFurnaceStatus();
+        verify(shellyClient, times(1)).controlFurnace(anyBoolean());
+
+        verifyNoMoreInteractions(shellyClient);
+
+        assertThat(boilerConfig.getFurnace().isWorking()).isTrue();
+    }
+
+    private LastMessage oldMessage() {
+        LastMessage lastMessage = new LastMessage("test message");
+        lastMessage.setTimestamp(LocalDateTime.now().minusMinutes(3));
+        return lastMessage;
+    }
+
+    private LastMessage newMessage() {
+        LastMessage lastMessage = new LastMessage("test message");
+        lastMessage.setTimestamp(LocalDateTime.now().minusSeconds(40));
+        return lastMessage;
+    }
 }

@@ -2,70 +2,86 @@ package cloud.cholewa.boiler.service;
 
 import cloud.cholewa.boiler.client.ShellyClient;
 import cloud.cholewa.boiler.config.BoilerConfig;
-import cloud.cholewa.boiler.model.DeviceStatus;
+import cloud.cholewa.boiler.model.LastMessage;
+import cloud.cholewa.shelly.model.ShellyProRelayResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+
+import java.time.LocalDateTime;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class FurnaceService {
 
-    private final BoilerConfig boiler;
+    private final BoilerConfig boilerConfig;
     private final ShellyClient shellyClient;
 
     public Mono<Void> controlFurnace() {
-        return Mono.empty();
+        return updateFurnaceStatus()
+            .then(setFurnaceState());
     }
 
-//    @RabbitListener(queues = "furnace")
-//    void handleFurnace(final DeviceRabbitMessage body) {
-//
-//        if (DeviceType.valueOf(body.getName().toUpperCase()).equals(FURNACE)) {
-//            log.info("Incoming device message received furnace, enabled:{}", body.isEnabled());
-//
-//            Mono.just(boiler.getFurnace())
-//                .flatMap(furnace -> body.isEnabled() ? startFurnace(furnace) : stopFurnace(furnace))
-//                .doOnNext(furnace -> updateLastMessage(furnace, body))
-//                .subscribe(
-//                    furnace -> {
-//                    },
-//                    error -> log.error("Errors handling furnace: {}", error.getMessage())
-//                );
-//        }
-//    }
-
-    private Mono<DeviceStatus> startFurnace(final DeviceStatus deviceStatus) {
-        return shouldFurnaceStart(deviceStatus)
-            .zipWith(shellyClient.controlFurnace(true))
-            .map(t -> {
-                t.getT1().setWorking(Boolean.TRUE.equals(t.getT2().getIson()));
-                return t.getT1();
-            });
+    private Mono<Void> updateFurnaceStatus() {
+        return Mono.fromCallable(this::getLastMessage)
+            .filter(this::wasUpdatedWithinLastMinute)
+            .doOnNext(lastMessage -> log.info("Querying furnace status"))
+            .flatMap(lastMessage -> shellyClient.getFurnaceStatus())
+            .doOnNext(this::updateFurnaceConfig)
+            .then();
     }
 
-    private Mono<DeviceStatus> stopFurnace(final DeviceStatus deviceStatus) {
-        return shellyClient.controlFurnace(false)
-            .flatMap(reply -> {
-                deviceStatus.setWorking(Boolean.TRUE.equals(reply.getIson()));
-                return Mono.just(deviceStatus);
-            });
+    private LastMessage getLastMessage() {
+        LastMessage lastMessage = new LastMessage("No status update available");
+        lastMessage.setTimestamp(LocalDateTime.MIN);
+
+        return boilerConfig.getFurnace().getLastMessage() == null
+            ? lastMessage
+            : boilerConfig.getFurnace().getLastMessage();
     }
 
-    private Mono<DeviceStatus> shouldFurnaceStart(final DeviceStatus furnaceStatus) {
-        return Mono.zip(shellyClient.getWaterPumpStatus(), shellyClient.getHeatingPumpStatus())
-            .map(t -> Boolean.TRUE.equals(t.getT1().getIson())
-                || Boolean.TRUE.equals(t.getT2().getIson()))
-            .filter(anyIsOn -> anyIsOn)
-            .map(isOn -> furnaceStatus);
+    private boolean wasUpdatedWithinLastMinute(final LastMessage lastMessage) {
+        return lastMessage.getTimestamp().isBefore(LocalDateTime.now().minusMinutes(1));
     }
 
-//    private void updateLastMessage(final DeviceStatus device, final DeviceRabbitMessage body) {
-//        device.setLastMessage(LastMessage.builder()
-//            .timestamp(LocalDateTime.now())
-//            .message(body.toString())
-//            .build());
-//    }
+    private void updateFurnaceConfig(final ShellyProRelayResponse response) {
+        boilerConfig.getFurnace().setWorking(Boolean.TRUE.equals(response.getIson()));
+        boilerConfig.getFurnace().setLastMessage(new LastMessage("Furnace status updated"));
+    }
+
+    private Mono<Void> setFurnaceState() {
+        return Mono.defer(() ->
+            boilerConfig.getHeating().isWorking() || boilerConfig.getWater().isWorking()
+                ? enableFurnace()
+                : disableFurnace()
+        );
+    }
+
+    private Mono<Void> enableFurnace() {
+        return Mono.just(boilerConfig.getFurnace().isWorking())
+            .filter(working -> !working)
+            .flatMap(working -> shellyClient.controlFurnace(true))
+            .doOnNext(relay -> {
+                log.info("Enabling furnace");
+                boilerConfig.getFurnace().setWorking(Boolean.TRUE.equals(relay.getIson()));
+                boilerConfig.getFurnace().setLastMessage(new LastMessage("Furnace state changed to: " + relay.getIson()));
+            })
+            .switchIfEmpty(Mono.fromRunnable(() -> log.info("Furnace is already enabled")))
+            .then();
+    }
+
+    private Mono<Void> disableFurnace() {
+        return Mono.just(boilerConfig.getFurnace().isWorking())
+            .filter(working -> working)
+            .flatMap(working -> shellyClient.controlFurnace(false))
+            .doOnNext(relay -> {
+                log.info("Disabling furnace");
+                boilerConfig.getFurnace().setWorking(Boolean.TRUE.equals(relay.getIson()));
+                boilerConfig.getFurnace().setLastMessage(new LastMessage("Furnace state changed to: " + relay.getIson()));
+            })
+            .switchIfEmpty(Mono.fromRunnable(() -> log.info("Furnace is already disabled")))
+            .then();
+    }
 }

@@ -84,6 +84,10 @@ public class ShellyClient {
             .onErrorResume(Exception.class, ex -> Mono.error(new BoilerException(ex.getMessage())));
     }
 
+    public Mono<ShellyProRelayResponse> getFurnaceStatus() {
+        return Mono.empty();
+    }
+
     public Mono<Relay> controlFurnace(final boolean enable) {
         return shellyWebClient
             .get()
