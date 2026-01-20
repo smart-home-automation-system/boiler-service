@@ -33,6 +33,7 @@ shelly:
   actor:
     pro.boiler:
       host: 10.78.30.20
+      port: 80
       relay:
         furnace: 0
         hot-water: 1

@@ -15,29 +15,31 @@ public class ShellyConfig {
 
     @Value("${shelly.actor.pro.boiler.host}")
     private String boilerHost;
+    @Value("${shelly.actor.pro.boiler.port}")
+    private int boilerPort;
     @Value("${shelly.actor.pro.boiler.relay.furnace}")
     private String relayFurnace;
     @Value("${shelly.actor.pro.boiler.relay.hot-water}")
-    private String relayHotWaterPump;
+    private String relayWaterPump;
     @Value("${shelly.actor.pro.boiler.relay.heating}")
     private String relayHeating;
 
     public UriBuilder getControlUriBuilder(final UriBuilder uriBuilder, BoilerDeviceType boilerDeviceType) {
         return switch (boilerDeviceType) {
-            case HOT_WATER -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayHotWaterPump);
-            case HEATING -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayHeating);
-            case FURNACE -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayFurnace);
+            case HOT_WATER -> uriBuilder.scheme("http").host(boilerHost).port(boilerPort).path(RELAY_PATH + relayWaterPump);
+            case HEATING -> uriBuilder.scheme("http").host(boilerHost).port(boilerPort).path(RELAY_PATH + relayHeating);
+            case FURNACE -> uriBuilder.scheme("http").host(boilerHost).port(boilerPort).path(RELAY_PATH + relayFurnace);
         };
     }
 
     public UriBuilder getStatusUriBuilder(final UriBuilder uriBuilder, final BoilerDeviceType boilerDeviceType) {
         return switch (boilerDeviceType) {
             case HOT_WATER ->
-                uriBuilder.scheme("http").host(boilerHost).path(PRO4_STATUS_PATH).queryParam("id", relayHotWaterPump);
+                uriBuilder.scheme("http").host(boilerHost).port(boilerPort).path(PRO4_STATUS_PATH).queryParam("id", relayWaterPump);
             case HEATING ->
-                uriBuilder.scheme("http").host(boilerHost).path(PRO4_STATUS_PATH).queryParam("id", relayHeating);
+                uriBuilder.scheme("http").host(boilerHost).port(boilerPort).path(PRO4_STATUS_PATH).queryParam("id", relayHeating);
             case FURNACE ->
-                uriBuilder.scheme("http").host(boilerHost).path(PRO4_STATUS_PATH).queryParam("id", relayFurnace);
+                uriBuilder.scheme("http").host(boilerHost).port(boilerPort).path(PRO4_STATUS_PATH).queryParam("id", relayFurnace);
         };
     }
 }
