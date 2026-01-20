@@ -15,18 +15,14 @@ public class ShellyConfig {
 
     @Value("${shelly.actor.pro.boiler.host}")
     private String boilerHost;
-
     @Value("${shelly.actor.pro.boiler.relay.furnace}")
     private String relayFurnace;
-
     @Value("${shelly.actor.pro.boiler.relay.hot-water}")
     private String relayHotWaterPump;
-
     @Value("${shelly.actor.pro.boiler.relay.heating}")
     private String relayHeating;
 
     public UriBuilder getControlUriBuilder(final UriBuilder uriBuilder, BoilerDeviceType boilerDeviceType) {
-
         return switch (boilerDeviceType) {
             case HOT_WATER -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayHotWaterPump);
             case HEATING -> uriBuilder.scheme("http").host(boilerHost).path(RELAY_PATH + relayHeating);
