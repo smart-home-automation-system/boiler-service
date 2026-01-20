@@ -4,7 +4,7 @@ import cloud.cholewa.boiler.client.ShellyClient;
 import cloud.cholewa.boiler.config.BoilerConfig;
 import cloud.cholewa.boiler.model.LastMessage;
 import cloud.cholewa.shelly.model.Relay;
-import cloud.cholewa.shelly.model.ShellyProRelayResponse;
+import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
@@ -41,7 +41,7 @@ class FurnaceServiceTest {
         boilerConfig.getFurnace().setLastMessage(null);
 
         when(shellyClient.getFurnaceStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(true).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(true).build()));
 
         when(shellyClient.controlFurnace(anyBoolean()))
             .thenReturn(Mono.just(Relay.builder().ison(true).build()));
@@ -105,7 +105,7 @@ class FurnaceServiceTest {
         boilerConfig.getHeating().setWorking(true);
 
         when(shellyClient.getFurnaceStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(false).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(false).build()));
 
         when(shellyClient.controlFurnace(true))
             .thenReturn(Mono.just(Relay.builder().ison(true).build()));
@@ -129,7 +129,7 @@ class FurnaceServiceTest {
         boilerConfig.getWater().setWorking(true);
 
         when(shellyClient.getFurnaceStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(false).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(false).build()));
 
         when(shellyClient.controlFurnace(true))
             .thenReturn(Mono.just(Relay.builder().ison(true).build()));
@@ -172,7 +172,7 @@ class FurnaceServiceTest {
         boilerConfig.getFurnace().setWorking(true);
 
         when(shellyClient.getFurnaceStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(true).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(true).build()));
 
         when(shellyClient.controlFurnace(false))
             .thenReturn(Mono.just(Relay.builder().ison(false).build()));
@@ -212,7 +212,7 @@ class FurnaceServiceTest {
         boilerConfig.getFurnace().setLastMessage(oldMessage());
 
         when(shellyClient.getFurnaceStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(false).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(false).build()));
 
         sut.controlFurnace()
             .as(StepVerifier::create)

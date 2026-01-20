@@ -4,7 +4,7 @@ import cloud.cholewa.boiler.client.ShellyClient;
 import cloud.cholewa.boiler.config.BoilerConfig;
 import cloud.cholewa.boiler.model.LastMessage;
 import cloud.cholewa.home.model.SystemActiveReply;
-import cloud.cholewa.shelly.model.ShellyProRelayResponse;
+import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -48,8 +48,9 @@ public class WaterPumpService {
         return lastMessage.getTimestamp().isBefore(LocalDateTime.now().minusMinutes(1));
     }
 
-    private void updateBoilerConfig(final ShellyProRelayResponse shellyProRelayResponse) {
-        boilerConfig.getWater().setWorking(Boolean.TRUE.equals(shellyProRelayResponse.getIson()));
+    private void updateBoilerConfig(final ShellyPro4StatusResponse response) {
+        log.info("Water pump status updated: {}", response.getOutput());
+        boilerConfig.getWater().setWorking(Boolean.TRUE.equals(response.getOutput()));
         boilerConfig.getWater().setLastMessage(new LastMessage("Pump status updated"));
     }
 
@@ -57,14 +58,14 @@ public class WaterPumpService {
         return Mono.just(waterSystemActiveReply)
             .flatMap(reply -> {
                 if (reply.getActive() == boilerConfig.getWater().isWorking()) {
-                    log.info("Pump state unchanged");
+                    log.info("Water pump state unchanged");
                     return Mono.empty();
                 } else {
                     return shellyClient.controlWaterPump(reply.getActive());
                 }
             })
             .doOnNext(relay -> {
-                log.info("Pump state changed to: {}", relay.getIson());
+                log.info("Water pump state changed to: {}", relay.getIson());
                 boilerConfig.getWater().setWorking(Boolean.TRUE.equals(relay.getIson()));
                 boilerConfig.getWater().setLastMessage(new LastMessage("Pump state changed to: " + relay.getIson()));
             })

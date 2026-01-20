@@ -5,7 +5,7 @@ import cloud.cholewa.boiler.config.BoilerConfig;
 import cloud.cholewa.boiler.model.LastMessage;
 import cloud.cholewa.home.model.SystemActiveReply;
 import cloud.cholewa.shelly.model.Relay;
-import cloud.cholewa.shelly.model.ShellyProRelayResponse;
+import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
@@ -40,7 +40,7 @@ class WaterPumpServiceTest {
     @Test
     void should_not_control_pump_when_lastMessage_is_null() {
         when(shellyClient.getWaterPumpStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(false).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(false).build()));
 
         sut.controlPump(SystemActiveReply.builder().active(false).build())
             .as(StepVerifier::create)
@@ -80,7 +80,7 @@ class WaterPumpServiceTest {
         boilerConfig.getWater().setWorking(false);
 
         when(shellyClient.getWaterPumpStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(false).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(false).build()));
 
         when(shellyClient.controlWaterPump(true))
             .thenReturn(Mono.just(Relay.builder().ison(true).build()));
@@ -125,7 +125,7 @@ class WaterPumpServiceTest {
         boilerConfig.getWater().setWorking(true);
 
         when(shellyClient.getWaterPumpStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(true).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(true).build()));
 
         when(shellyClient.controlWaterPump(false))
             .thenReturn(Mono.just(Relay.builder().ison(false).build()));
@@ -169,7 +169,7 @@ class WaterPumpServiceTest {
         boilerConfig.getHeating().setWorking(true);
 
         when(shellyClient.getWaterPumpStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(true).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(true).build()));
 
         when(shellyClient.controlHeatingPump(anyBoolean()))
             .thenReturn(Mono.just(Relay.builder().ison(false).build()));
@@ -209,7 +209,7 @@ class WaterPumpServiceTest {
         boilerConfig.getWater().setLastMessage(getOldMessage());
 
         when(shellyClient.getWaterPumpStatus())
-            .thenReturn(Mono.just(ShellyProRelayResponse.builder().ison(false).build()));
+            .thenReturn(Mono.just(ShellyPro4StatusResponse.builder().output(false).build()));
 
         when(shellyClient.controlWaterPump(true)).thenReturn(Mono.error(new RuntimeException()));
 

@@ -4,65 +4,38 @@ import cloud.cholewa.boiler.config.BoilerConfig;
 import cloud.cholewa.boiler.model.BoilerDeviceType;
 import cloud.cholewa.boiler.model.BoilerStatusReply;
 import cloud.cholewa.boiler.model.DeviceStatusReply;
+import cloud.cholewa.boiler.model.DeviceStatus;
+import cloud.cholewa.boiler.model.LastMessage;
 import cloud.cholewa.boiler.model.LastMessageReply;
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
 import java.util.Map;
 
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
-public class BoilerStatusMapper {
+@Mapper(componentModel = "spring")
+public interface BoilerStatusMapper {
 
-    public static BoilerStatusReply toBoilerStatusReply(BoilerConfig boiler) {
-        return BoilerStatusReply.builder()
-            .furnace(getFurnaceReply(boiler))
-            .pumps(getPumpsReply(boiler))
-            .build();
-    }
+    @Mapping(target = "pumps", expression = "java(getPumpsReply(boiler))")
+    @Mapping(target = "furnace", expression = "java(mapDeviceStatus(boiler.getFurnace()))")
+    BoilerStatusReply toBoilerStatusReply(BoilerConfig boiler);
 
-    private static DeviceStatusReply getFurnaceReply(final BoilerConfig boiler) {
-        if (boiler.getFurnace().getLastMessage() == null) {
+    @Mapping(target = "isWorking", expression = "java(deviceStatus.isWorking())")
+    @Mapping(target = "lastMessageReply", source = "lastMessage")
+    DeviceStatusReply toDeviceStatusReply(DeviceStatus deviceStatus);
+
+    LastMessageReply toLastMessageReply(LastMessage lastMessage);
+
+    default DeviceStatusReply mapDeviceStatus(DeviceStatus deviceStatus) {
+        if (deviceStatus == null || deviceStatus.getLastMessage() == null) {
             return DeviceStatusReply.builder().build();
         }
-        return DeviceStatusReply.builder()
-            .isWorking(boiler.getFurnace().isWorking())
-            .lastMessageReply(LastMessageReply.builder()
-                .timestamp(boiler.getFurnace().getLastMessage().getTimestamp())
-                .message(boiler.getFurnace().getLastMessage().getMessage())
-                .build())
-            .build();
+        return toDeviceStatusReply(deviceStatus);
     }
 
-    private static Map<String, DeviceStatusReply> getPumpsReply(final BoilerConfig boiler) {
+    default Map<String, DeviceStatusReply> getPumpsReply(final BoilerConfig boiler) {
         return Map.ofEntries(
-            Map.entry(BoilerDeviceType.HOT_WATER.name().toLowerCase(), getHotWaterPumpReply(boiler)),
-            Map.entry(BoilerDeviceType.HEATING.name().toLowerCase(), getHeatingPumpReply(boiler))
+            Map.entry(BoilerDeviceType.HOT_WATER.name().toLowerCase(), mapDeviceStatus(boiler.getWater())),
+            Map.entry(BoilerDeviceType.HEATING.name().toLowerCase(), mapDeviceStatus(boiler.getHeating()))
         );
-    }
-
-    private static DeviceStatusReply getHotWaterPumpReply(final BoilerConfig boiler) {
-        if (boiler.getWater().getLastMessage() == null) {
-            return DeviceStatusReply.builder().build();
-        }
-        return DeviceStatusReply.builder()
-            .isWorking(boiler.getWater().isWorking())
-            .lastMessageReply(LastMessageReply.builder()
-                .timestamp(boiler.getWater().getLastMessage().getTimestamp())
-                .message(boiler.getWater().getLastMessage().getMessage())
-                .build())
-            .build();
-    }
-
-    private static DeviceStatusReply getHeatingPumpReply(final BoilerConfig boiler) {
-        if (boiler.getHeating().getLastMessage() == null) {
-            return DeviceStatusReply.builder().build();
-        }
-        return DeviceStatusReply.builder()
-            .isWorking(boiler.getHeating().isWorking())
-            .lastMessageReply(LastMessageReply.builder()
-                .timestamp(boiler.getHeating().getLastMessage().getTimestamp())
-                .message(boiler.getHeating().getLastMessage().getMessage())
-                .build())
-            .build();
     }
 }

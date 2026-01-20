@@ -44,7 +44,7 @@ public class AppConfig {
     @Bean
     HttpClient shellyHttpClient(final ConnectionProvider shellyConnectionProvider) {
         return HttpClient.create(shellyConnectionProvider)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1000);
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000);
 //            .doOnConnected(conn -> conn
 //                .addHandlerLast(new LogbookClientHandler(logbook))
 //            );
@@ -53,13 +53,13 @@ public class AppConfig {
     @Bean
     HttpClient heatingHttpClient(final ConnectionProvider heatingConnectionProvider) {
         return HttpClient.create(heatingConnectionProvider)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1000);
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000);
     }
 
     @Bean
     HttpClient waterHttpClient(final ConnectionProvider waterConnectionProvider) {
         return HttpClient.create(waterConnectionProvider)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1000);
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000);
     }
 
     @Bean

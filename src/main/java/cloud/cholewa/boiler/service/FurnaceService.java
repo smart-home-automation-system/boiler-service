@@ -3,7 +3,7 @@ package cloud.cholewa.boiler.service;
 import cloud.cholewa.boiler.client.ShellyClient;
 import cloud.cholewa.boiler.config.BoilerConfig;
 import cloud.cholewa.boiler.model.LastMessage;
-import cloud.cholewa.shelly.model.ShellyProRelayResponse;
+import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -46,8 +46,8 @@ public class FurnaceService {
         return lastMessage.getTimestamp().isBefore(LocalDateTime.now().minusMinutes(1));
     }
 
-    private void updateFurnaceConfig(final ShellyProRelayResponse response) {
-        boilerConfig.getFurnace().setWorking(Boolean.TRUE.equals(response.getIson()));
+    private void updateFurnaceConfig(final ShellyPro4StatusResponse response) {
+        boilerConfig.getFurnace().setWorking(Boolean.TRUE.equals(response.getOutput()));
         boilerConfig.getFurnace().setLastMessage(new LastMessage("Furnace status updated"));
     }
 

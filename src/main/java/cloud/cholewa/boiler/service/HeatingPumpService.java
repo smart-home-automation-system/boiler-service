@@ -5,7 +5,7 @@ import cloud.cholewa.boiler.config.BoilerConfig;
 import cloud.cholewa.boiler.model.LastMessage;
 import cloud.cholewa.home.model.SystemActiveReply;
 import cloud.cholewa.shelly.model.Relay;
-import cloud.cholewa.shelly.model.ShellyProRelayResponse;
+import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -48,8 +48,9 @@ public class HeatingPumpService {
         return lastMessage.getTimestamp().isBefore(LocalDateTime.now().minusMinutes(1));
     }
 
-    private void updateBoilerConfig(final ShellyProRelayResponse shellyProRelayResponse) {
-        boilerConfig.getHeating().setWorking(Boolean.TRUE.equals(shellyProRelayResponse.getIson()));
+    private void updateBoilerConfig(final ShellyPro4StatusResponse response) {
+        log.info("Heating pump status updated: {}", response.getOutput());
+        boilerConfig.getHeating().setWorking(Boolean.TRUE.equals(response.getOutput()));
         boilerConfig.getHeating().setLastMessage(new LastMessage("Pump status updated"));
     }
 
@@ -60,14 +61,14 @@ public class HeatingPumpService {
                     log.info("Both pumps are active, disabling heating pump");
                     return shellyClient.controlHeatingPump(false);
                 } else if (reply.getActive() == boilerConfig.getHeating().isWorking()) {
-                    log.info("Pump state unchanged");
+                    log.info("Heating pump state unchanged");
                     return Mono.empty();
                 } else {
                     return allowDisablePumpEvenIfWaterPumpIsWorking(reply);
                 }
             })
             .doOnNext(relay -> {
-                log.info("Pump state changed to: {}", relay.getIson());
+                log.info("Heating pump state changed to: {}", relay.getIson());
                 boilerConfig.getHeating().setWorking(Boolean.TRUE.equals(relay.getIson()));
                 boilerConfig.getHeating().setLastMessage(new LastMessage("Pump state changed to: " + relay.getIson()));
             })

@@ -3,7 +3,7 @@ package cloud.cholewa.boiler.client;
 import cloud.cholewa.boiler.config.ShellyConfig;
 import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.shelly.model.Relay;
-import cloud.cholewa.shelly.model.ShellyProRelayResponse;
+import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -54,7 +54,7 @@ class ShellyClientTest {
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .setBody("""
                 {
-                    "ison": true
+                    "output": true
                 }
                 """)
         );
@@ -63,8 +63,8 @@ class ShellyClientTest {
             .as(StepVerifier::create)
             .assertNext(
                 response -> {
-                    assertThat(response).isInstanceOf(ShellyProRelayResponse.class);
-                    assertThat(response.getIson()).isTrue();
+                    assertThat(response).isInstanceOf(ShellyPro4StatusResponse.class);
+                    assertThat(response.getOutput()).isTrue();
                 }
             )
             .verifyComplete();
@@ -122,7 +122,7 @@ class ShellyClientTest {
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .setBody("""
                 {
-                    "ison": false
+                    "output": false
                 }
                 """)
         );
@@ -131,8 +131,8 @@ class ShellyClientTest {
             .as(StepVerifier::create)
             .assertNext(
                 response -> {
-                    assertThat(response).isInstanceOf(ShellyProRelayResponse.class);
-                    assertThat(response.getIson()).isFalse();
+                    assertThat(response).isInstanceOf(ShellyPro4StatusResponse.class);
+                    assertThat(response.getOutput()).isFalse();
                 }
             )
             .verifyComplete();
@@ -190,7 +190,7 @@ class ShellyClientTest {
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .setBody("""
                 {
-                    "ison": true
+                    "output": true
                 }
                 """)
         );
@@ -199,8 +199,8 @@ class ShellyClientTest {
             .as(StepVerifier::create)
             .assertNext(
                 response -> {
-                    assertThat(response).isInstanceOf(ShellyProRelayResponse.class);
-                    assertThat(response.getIson()).isTrue();
+                    assertThat(response).isInstanceOf(ShellyPro4StatusResponse.class);
+                    assertThat(response.getOutput()).isTrue();
                 }
             )
             .verifyComplete();

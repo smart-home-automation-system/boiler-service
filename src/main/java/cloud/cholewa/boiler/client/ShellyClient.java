@@ -3,7 +3,7 @@ package cloud.cholewa.boiler.client;
 import cloud.cholewa.boiler.config.ShellyConfig;
 import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.shelly.model.Relay;
-import cloud.cholewa.shelly.model.ShellyProRelayResponse;
+import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -22,12 +22,12 @@ public class ShellyClient {
     private final ShellyConfig shellyConfig;
     private final WebClient shellyWebClient;
 
-    public Mono<ShellyProRelayResponse> getWaterPumpStatus() {
+    public Mono<ShellyPro4StatusResponse> getWaterPumpStatus() {
         return shellyWebClient
             .get()
             .uri(uriBuilder -> shellyConfig.getStatusUriBuilder(uriBuilder, HOT_WATER).build())
             .retrieve()
-            .bodyToMono(ShellyProRelayResponse.class)
+            .bodyToMono(ShellyPro4StatusResponse.class)
             .doOnError(throwable -> log.error("Error fetching water pump status", throwable))
             .onErrorMap(throwable -> new BoilerException("Error fetching water pump status"));
     }
@@ -44,12 +44,12 @@ public class ShellyClient {
             .onErrorMap(throwable -> new BoilerException("Error controlling water pump"));
     }
 
-    public Mono<ShellyProRelayResponse> getHeatingPumpStatus() {
+    public Mono<ShellyPro4StatusResponse> getHeatingPumpStatus() {
         return shellyWebClient
             .get()
             .uri(uriBuilder -> shellyConfig.getStatusUriBuilder(uriBuilder, HEATING).build())
             .retrieve()
-            .bodyToMono(ShellyProRelayResponse.class)
+            .bodyToMono(ShellyPro4StatusResponse.class)
             .doOnError(throwable -> log.error("Error fetching heating pump status", throwable))
             .onErrorMap(throwable -> new BoilerException("Error fetching heating pump status"));
     }
@@ -66,12 +66,12 @@ public class ShellyClient {
             .onErrorMap(throwable -> new BoilerException("Error controlling heating pump"));
     }
 
-    public Mono<ShellyProRelayResponse> getFurnaceStatus() {
+    public Mono<ShellyPro4StatusResponse> getFurnaceStatus() {
         return shellyWebClient
             .get()
             .uri(uriBuilder -> shellyConfig.getStatusUriBuilder(uriBuilder, FURNACE).build())
             .retrieve()
-            .bodyToMono(ShellyProRelayResponse.class)
+            .bodyToMono(ShellyPro4StatusResponse.class)
             .doOnError(throwable -> log.error("Error fetching furnace status", throwable))
             .onErrorMap(throwable -> new BoilerException("Error fetching furnace status"));
     }
