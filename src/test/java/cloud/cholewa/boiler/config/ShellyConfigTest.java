@@ -18,8 +18,9 @@ class ShellyConfigTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(sut, "boilerHost", "192.168.1.10");
+        ReflectionTestUtils.setField(sut, "boilerPort", 80);
         ReflectionTestUtils.setField(sut, "relayFurnace", "0");
-        ReflectionTestUtils.setField(sut, "relayHotWaterPump", "1");
+        ReflectionTestUtils.setField(sut, "relayWaterPump", "1");
         ReflectionTestUtils.setField(sut, "relayHeating", "2");
     }
 
