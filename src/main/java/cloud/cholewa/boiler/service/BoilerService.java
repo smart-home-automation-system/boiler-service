@@ -15,12 +15,13 @@ import reactor.core.publisher.Mono;
 public class BoilerService {
 
     private final BoilerConfig boilerConfig;
+    private final BoilerStatusMapper boilerStatusMapper;
     private final WaterPumpService waterPumpService;
     private final HeatingPumpService heatingPumpService;
     private final FurnaceService furnaceService;
 
     public Mono<BoilerStatusReply> getBoilerStatus() {
-        return Mono.fromCallable(() -> BoilerStatusMapper.toBoilerStatusReply(boilerConfig))
+        return Mono.fromCallable(() -> boilerStatusMapper.toBoilerStatusReply(boilerConfig))
             .doOnSubscribe(subscription -> log.info("Received request for boiler status"));
     }
 
