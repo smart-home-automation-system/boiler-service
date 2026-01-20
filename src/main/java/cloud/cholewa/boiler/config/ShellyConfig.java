@@ -1,6 +1,5 @@
 package cloud.cholewa.boiler.config;
 
-import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.boiler.model.BoilerDeviceType;
 import lombok.Getter;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,13 +34,14 @@ public class ShellyConfig {
         };
     }
 
-    public UriBuilder getStatusUriBuilder(final UriBuilder uriBuilder, BoilerDeviceType boilerDeviceType) {
+    public UriBuilder getStatusUriBuilder(final UriBuilder uriBuilder, final BoilerDeviceType boilerDeviceType) {
         return switch (boilerDeviceType) {
             case HOT_WATER ->
                 uriBuilder.scheme("http").host(boilerHost).path(PRO4_STATUS_PATH).queryParam("id", relayHotWaterPump);
             case HEATING ->
                 uriBuilder.scheme("http").host(boilerHost).path(PRO4_STATUS_PATH).queryParam("id", relayHeating);
-            default -> throw new BoilerException("Unexpected value for getting status of device: " + boilerDeviceType);
+            case FURNACE ->
+                uriBuilder.scheme("http").host(boilerHost).path(PRO4_STATUS_PATH).queryParam("id", relayFurnace);
         };
     }
 }
