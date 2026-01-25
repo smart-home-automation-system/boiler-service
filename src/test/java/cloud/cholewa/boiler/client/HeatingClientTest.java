@@ -1,7 +1,6 @@
 package cloud.cholewa.boiler.client;
 
 import cloud.cholewa.boiler.config.HeatingClientConfig;
-import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.home.model.SystemActiveReply;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
@@ -16,7 +15,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class HeatingClientTest {
 
@@ -66,14 +65,16 @@ class HeatingClientTest {
     }
 
     @Test
-    void should_fail_heating_status_when_server_returns_error() {
+    void should_return_false_heating_status_when_server_returns_error() {
         mockWebServer.enqueue(new MockResponse().setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR.value()));
 
         sut.querySystemActive()
             .as(StepVerifier::create)
-            .expectErrorSatisfies(throwable ->
-                assertThat(throwable).isInstanceOf(BoilerException.class))
-            .verify();
+            .assertNext(systemActiveReply ->
+                assertThat(systemActiveReply)
+                    .isInstanceOf(SystemActiveReply.class)
+                    .satisfies(reply -> assertThat(reply.getActive()).isFalse()))
+            .verifyComplete();
     }
 
     private HeatingClientConfig getHeatingClientConfig() {

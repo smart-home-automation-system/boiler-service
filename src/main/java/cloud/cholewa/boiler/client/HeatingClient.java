@@ -1,7 +1,6 @@
 package cloud.cholewa.boiler.client;
 
 import cloud.cholewa.boiler.config.HeatingClientConfig;
-import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.home.model.SystemActiveReply;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,8 +21,11 @@ public class HeatingClient {
             .uri(heatingClientConfig::getUriBuilder)
             .retrieve()
             .bodyToMono(SystemActiveReply.class)
-            .doOnError(ex -> log.error("Error while querying system active status {}", ex.getMessage()))
             .doOnSubscribe(subscription -> log.info("Querying heating-service for active status"))
-            .onErrorMap(ex -> new BoilerException("Failed to query heating-service active status"));
+            .doOnError(ex -> log.error("Error while querying system active status {}", ex.getMessage()))
+            .onErrorResume(ex -> {
+                log.warn("Returning default heating system active status: false");
+                return Mono.just(SystemActiveReply.builder().active(false).build());
+            });
     }
 }

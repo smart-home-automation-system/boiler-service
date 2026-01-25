@@ -1,7 +1,6 @@
 package cloud.cholewa.boiler.client;
 
 import cloud.cholewa.boiler.config.WaterClientConfig;
-import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.home.model.SystemActiveReply;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
@@ -16,7 +15,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class WaterClientTest {
 
@@ -59,22 +58,24 @@ class WaterClientTest {
                 assertThat(systemActiveReply)
                     .isNotNull()
                     .isInstanceOf(SystemActiveReply.class)
-                    .satisfies(reply ->
-                        assertThat(reply.getActive()).isTrue()
-                    ))
+                    .satisfies(reply -> assertThat(reply.getActive()).isTrue())
+            )
             .verifyComplete();
     }
 
     @Test
-    void should_fail_water_status_when_server_returns_error() {
+    void should_return_false_water_status_when_server_returns_error() {
         mockWebServer.enqueue(new MockResponse().setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR.value()));
 
         sut.querySystemActive()
             .as(StepVerifier::create)
-            .expectErrorSatisfies(error ->
-                assertThat(error).isInstanceOf(BoilerException.class)
+            .assertNext(
+                systemActiveReply ->
+                    assertThat(systemActiveReply)
+                        .isInstanceOf(SystemActiveReply.class)
+                        .satisfies(reply -> assertThat(reply.getActive()).isFalse())
             )
-            .verify();
+            .verifyComplete();
     }
 
     private WaterClientConfig getWaterClientConfig() {
