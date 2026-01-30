@@ -16,6 +16,37 @@ eureka:
     fetch-registry: true
     register-with-eureka: true
 
+internal:
+  service:
+    heating-service:
+      schema: http
+      host: heating-service
+      port: 6200
+      path: "home/heating/status/active"
+    water-service:
+      schema: http
+      host: water-service
+      port: 6200
+      path: "home/water/status/active"
+
+shelly:
+  actor:
+    pro.boiler:
+      host: 10.78.30.20
+      port: 80
+      relay:
+        furnace: 0
+        hot-water: 1
+        heating: 2
+
+logbook:
+  format:
+    style: http
+
+logging:
+  level:
+    org.zalando.logbook: trace
+
 ---
 
 spring:
@@ -32,3 +63,12 @@ management:
 eureka:
   client:
     enabled: false
+
+internal:
+  service:
+    heating-service:
+      host: localhost
+      port: 6002
+    water-service:
+      host: localhost
+      port: 6006
