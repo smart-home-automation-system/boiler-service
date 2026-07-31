@@ -21,16 +21,6 @@ class BoilerControllerTest {
     private BoilerService boilerService;
 
     @Test
-    void should_return_404_when_status_not_found() {
-        when(boilerService.getBoilerStatus()).thenReturn(Mono.empty());
-
-        webTestClient.get()
-            .uri("/status")
-            .exchange()
-            .expectStatus().isNotFound();
-    }
-
-    @Test
     void should_return_200_when_status_found() {
         when(boilerService.getBoilerStatus()).thenReturn(Mono.just(BoilerStatusReply.builder().build()));
 

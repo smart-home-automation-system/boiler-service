@@ -19,7 +19,6 @@ public class BoilerController {
     @GetMapping("status")
     Mono<ResponseEntity<BoilerStatusReply>> getBoilerStatus() {
         return boilerService.getBoilerStatus()
-            .map(ResponseEntity::ok)
-            .defaultIfEmpty(ResponseEntity.notFound().build());
+            .map(ResponseEntity::ok);
     }
 }

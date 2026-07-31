@@ -6,13 +6,14 @@ import cloud.cholewa.boiler.model.LastMessage;
 import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Slf4j
-@Component
+@Service
 @RequiredArgsConstructor
 public class FurnaceService {
 
@@ -26,7 +27,7 @@ public class FurnaceService {
 
     private Mono<Void> updateFurnaceStatus() {
         return Mono.fromCallable(this::getLastMessage)
-            .filter(this::wasUpdatedWithinLastMinute)
+            .filter(this::notUpdatedWithinLastMinute)
             .doOnNext(lastMessage -> log.info("Querying furnace status"))
             .flatMap(lastMessage -> shellyClient.getFurnaceStatus())
             .doOnNext(this::updateFurnaceConfig)
@@ -42,8 +43,8 @@ public class FurnaceService {
             : boilerConfig.getFurnace().getLastMessage();
     }
 
-    private boolean wasUpdatedWithinLastMinute(final LastMessage lastMessage) {
-        return lastMessage.getTimestamp().isBefore(LocalDateTime.now().minusMinutes(1));
+    private boolean notUpdatedWithinLastMinute(final LastMessage lastMessage) {
+        return lastMessage.getTimestamp().isBefore(LocalDateTime.now(ZoneId.systemDefault()).minusMinutes(1));
     }
 
     private void updateFurnaceConfig(final ShellyPro4StatusResponse response) {

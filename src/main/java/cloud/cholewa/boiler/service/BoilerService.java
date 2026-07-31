@@ -9,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
+import java.util.function.Function;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -29,8 +31,23 @@ public class BoilerService {
         final SystemActiveReply waterSystemActiveReply,
         final SystemActiveReply heatingSystemActiveReply
     ) {
-        return waterPumpService.controlPump(waterSystemActiveReply)
-            .then(heatingPumpService.controlPump(heatingSystemActiveReply))
-            .then(furnaceService.controlFurnace());
+        return waterPumpService.controlPump(waterSystemActiveReply).onErrorResume(skip("hot water pump"))
+            .then(heatingPumpService.controlPump(heatingSystemActiveReply).onErrorResume(skip("heating pump")))
+            .then(furnaceService.controlFurnace().onErrorResume(skip("furnace")));
+    }
+
+    /**
+     * Keeps a failing device from cancelling the rest of the pass - without this the furnace,
+     * controlled last, would be skipped whenever a pump call failed and would keep burning until
+     * the next successful pass. Device state is only ever written from an actual device response,
+     * so a skipped step leaves the cached state untouched and the furnace cannot be enabled on a
+     * pump that never confirmed it is running. The stale {@code lastMessage} timestamp makes the
+     * next pass query the device again.
+     */
+    private Function<Throwable, Mono<Void>> skip(final String device) {
+        return throwable -> {
+            log.warn("Skipping {} in this pass: {}", device, throwable.getMessage());
+            return Mono.empty();
+        };
     }
 }

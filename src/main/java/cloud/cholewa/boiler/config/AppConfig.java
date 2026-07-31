@@ -6,19 +6,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.zalando.logbook.Logbook;
+import org.zalando.logbook.netty.LogbookClientHandler;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
+
+import java.time.Duration;
 
 @Configuration
 @RequiredArgsConstructor
 public class AppConfig {
-
-//    private final Logbook logbook;
-
-    @Bean
-    WebClient.Builder webClientBuilder() {
-        return WebClient.builder();
-    }
 
     @Bean
     ConnectionProvider shellyConnectionProvider() {
@@ -42,24 +39,33 @@ public class AppConfig {
     }
 
     @Bean
-    HttpClient shellyHttpClient(final ConnectionProvider shellyConnectionProvider) {
+    HttpClient shellyHttpClient(final ConnectionProvider shellyConnectionProvider, final Logbook logbook) {
         return HttpClient.create(shellyConnectionProvider)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000);
-//            .doOnConnected(conn -> conn
-//                .addHandlerLast(new LogbookClientHandler(logbook))
-//            );
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
+            .responseTimeout(Duration.ofSeconds(5))
+            .doOnConnected(connection -> connection
+                .addHandlerLast(new LogbookClientHandler(logbook))
+            );
     }
 
     @Bean
-    HttpClient heatingHttpClient(final ConnectionProvider heatingConnectionProvider) {
+    HttpClient heatingHttpClient(final ConnectionProvider heatingConnectionProvider, final Logbook logbook) {
         return HttpClient.create(heatingConnectionProvider)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000);
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
+            .responseTimeout(Duration.ofSeconds(5))
+            .doOnConnected(connection -> connection
+                .addHandlerLast(new LogbookClientHandler(logbook))
+            );
     }
 
     @Bean
-    HttpClient waterHttpClient(final ConnectionProvider waterConnectionProvider) {
+    HttpClient waterHttpClient(final ConnectionProvider waterConnectionProvider, final Logbook logbook) {
         return HttpClient.create(waterConnectionProvider)
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000);
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
+            .responseTimeout(Duration.ofSeconds(5))
+            .doOnConnected(connection -> connection
+                .addHandlerLast(new LogbookClientHandler(logbook))
+            );
     }
 
     @Bean
