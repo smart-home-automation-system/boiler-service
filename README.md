@@ -33,7 +33,9 @@ water and heating). The service does not decide *whether* the house needs heat �
 `water-service` for the hot water status and `heating-service` for the rooms status, and
 translates both answers into relay states on a Shelly Pro 4 device over HTTP.
 
-The decision loop runs on a scheduler, once a minute (`StatusCron`, 10 s initial delay).
+The decision loop runs on a scheduler with a one-minute delay between passes (`StatusCron`,
+10 s initial delay). It is a reactive `@Scheduled` method using `fixedDelay`, so a slow pass
+postpones the next one instead of overlapping with it and racing on the shared device state.
 Every pass queries both services, then drives the devices in a fixed order — hot water
 pump, heating pump, furnace:
 
@@ -45,8 +47,9 @@ pump, heating pump, furnace:
 
 Device state is kept in memory (`BoilerConfig`) and re-read from the Shelly device only when
 the cached entry is older than a minute, so a stuck loop does not turn into a burst of device
-calls. If `heating-service` or `water-service` cannot be reached, the client falls back to
-`active=false` — an unreachable neighbour makes the boiler idle rather than blocked.
+calls. Every HTTP client has a 5 s response timeout, and if `heating-service` or
+`water-service` cannot be reached, the client falls back to `active=false` — an unreachable
+neighbour makes the boiler idle rather than blocked.
 
 ## Run locally
 
@@ -67,12 +70,15 @@ and `internal.service.*` properties; the `local` profile points `heating-service
 
 ## API
 
-All paths are served under the `/home/boiler` base path (`spring.webflux.base-path`), which
-is also the path the Kubernetes ingress routes to this service.
+All paths are served under the `/home/boiler` base path (`spring.webflux.base-path`). The
+service is currently reachable inside the cluster only — the Kubernetes ingress has no rule
+for `/home/boiler`, and requests under `/home` land on `api-gateway-service`, which has no
+static route to this service (it relied on the Eureka discovery locator, dropped together
+with the Eureka client).
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/home/boiler/status` | Current state of the furnace and of both pumps (`hot_water`, `heating`) — each with its working flag and the timestamped message describing the last change; a device the loop has not touched yet comes back as an empty object |
+| `GET` | `/home/boiler/status` | Current state of the furnace and of both pumps (`hot_water`, `heating`) — each with its working flag and the timestamped message describing the last change; a device the loop has not touched yet comes back as `{"working": false}`, without the message |
 
 Actuator endpoints, including the `readiness` and `liveness` health groups used by the
 Kubernetes probes, live on the management port, not on the application one.
