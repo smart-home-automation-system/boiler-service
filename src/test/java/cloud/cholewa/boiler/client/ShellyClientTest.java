@@ -5,8 +5,8 @@ import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.shelly.model.Relay;
 import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.SneakyThrows;
-import okhttp3.mockwebserver.MockResponse;
-import okhttp3.mockwebserver.MockWebServer;
+import mockwebserver3.MockResponse;
+import mockwebserver3.MockWebServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,21 +42,21 @@ class ShellyClientTest {
     }
 
     @AfterEach
-    @SneakyThrows
     void tearDown() {
-        mockWebServer.shutdown();
+        mockWebServer.close();
     }
 
     @Test
     void should_get_water_pump_status() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.OK.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .setBody("""
+            .body("""
                 {
                     "output": true
                 }
                 """)
+            .build()
         );
 
         sut.getWaterPumpStatus()
@@ -72,8 +72,9 @@ class ShellyClientTest {
 
     @Test
     void should_throw_exception_when_error_during_getting_water_pump_status() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.INTERNAL_SERVER_ERROR.value())
+            .build()
         );
 
         sut.getWaterPumpStatus()
@@ -83,14 +84,15 @@ class ShellyClientTest {
 
     @Test
     void should_control_water_pump() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.OK.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .setBody("""
+            .body("""
                 {
                     "ison": false
                 }
                 """)
+            .build()
         );
 
         sut.controlWaterPump(false)
@@ -106,8 +108,9 @@ class ShellyClientTest {
 
     @Test
     void should_throw_exception_when_error_during_controlling_water_pump() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.BAD_GATEWAY.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.BAD_GATEWAY.value())
+            .build()
         );
 
         sut.controlWaterPump(false)
@@ -117,14 +120,15 @@ class ShellyClientTest {
 
     @Test
     void should_get_heating_pump_status() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.OK.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .setBody("""
+            .body("""
                 {
                     "output": false
                 }
                 """)
+            .build()
         );
 
         sut.getHeatingPumpStatus()
@@ -140,8 +144,9 @@ class ShellyClientTest {
 
     @Test
     void should_throw_exception_when_error_during_getting_heating_pump_status() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.REQUEST_TIMEOUT.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.REQUEST_TIMEOUT.value())
+            .build()
         );
 
         sut.getHeatingPumpStatus()
@@ -151,14 +156,15 @@ class ShellyClientTest {
 
     @Test
     void should_control_heating_pump() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.OK.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .setBody("""
+            .body("""
                 {
                     "ison": false
                 }
                 """)
+            .build()
         );
 
         sut.controlHeatingPump(false)
@@ -174,8 +180,9 @@ class ShellyClientTest {
 
     @Test
     void should_throw_exception_when_error_during_controlling_heating_pump() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.TOO_MANY_REQUESTS.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.TOO_MANY_REQUESTS.value())
+            .build()
         );
 
         sut.controlHeatingPump(false)
@@ -185,14 +192,15 @@ class ShellyClientTest {
 
     @Test
     void should_get_furnace_status() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.OK.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .setBody("""
+            .body("""
                 {
                     "output": true
                 }
                 """)
+            .build()
         );
 
         sut.getFurnaceStatus()
@@ -208,8 +216,9 @@ class ShellyClientTest {
 
     @Test
     void should_throw_exception_when_error_during_getting_furnace_status() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.BAD_GATEWAY.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.BAD_GATEWAY.value())
+            .build()
         );
 
         sut.getFurnaceStatus()
@@ -219,14 +228,15 @@ class ShellyClientTest {
 
     @Test
     void should_control_furnace() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.OK.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .setBody("""
+            .body("""
                 {
                     "ison": false
                 }
                 """)
+            .build()
         );
 
         sut.controlFurnace(false)
@@ -242,8 +252,9 @@ class ShellyClientTest {
 
     @Test
     void should_throw_exception_when_error_during_controlling_furnace() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.GATEWAY_TIMEOUT.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.GATEWAY_TIMEOUT.value())
+            .build()
         );
 
         sut.controlFurnace(false)

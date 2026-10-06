@@ -3,8 +3,8 @@ package cloud.cholewa.boiler.client;
 import cloud.cholewa.boiler.config.HeatingClientConfig;
 import cloud.cholewa.home.model.SystemActiveReply;
 import lombok.SneakyThrows;
-import okhttp3.mockwebserver.MockResponse;
-import okhttp3.mockwebserver.MockWebServer;
+import mockwebserver3.MockResponse;
+import mockwebserver3.MockWebServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,21 +35,21 @@ class HeatingClientTest {
     }
 
     @AfterEach
-    @SneakyThrows
     void tearDown() {
-        mockWebServer.shutdown();
+        mockWebServer.close();
     }
 
     @Test
     void should_receive_heating_status_when_system_is_inactive() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(HttpStatus.OK.value())
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
             .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .setBody("""
+            .body("""
                 {
                     "active": false
                 }
                 """)
+            .build()
         );
 
         sut.querySystemActive()
@@ -66,7 +66,7 @@ class HeatingClientTest {
 
     @Test
     void should_return_false_heating_status_when_server_returns_error() {
-        mockWebServer.enqueue(new MockResponse().setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR.value()));
+        mockWebServer.enqueue(new MockResponse.Builder().code(HttpStatus.INTERNAL_SERVER_ERROR.value()).build());
 
         sut.querySystemActive()
             .as(StepVerifier::create)
