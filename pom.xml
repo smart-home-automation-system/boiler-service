@@ -202,8 +202,8 @@
 				<configuration>
 					<argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar} -Xshare:off</argLine>
 					<!-- the test document of application.yaml switches the console logs back to plain
-					     text and puts logbook in http style; no test class carries @ActiveProfiles, so
-					     without this every Spring context in the tests logged logstash JSON -->
+					     text and puts logbook in http style; without this a Spring context of a class
+					     that carries no @ActiveProfiles logs logstash JSON -->
 					<systemPropertyVariables>
 						<spring.profiles.active>test</spring.profiles.active>
 					</systemPropertyVariables>

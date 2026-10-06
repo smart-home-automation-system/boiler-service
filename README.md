@@ -63,6 +63,13 @@ mvn spring-boot:run -Dspring-boot.run.profiles=local
 | `local` profile | 6007 | 8007 |
 | in the cluster (`home` profile) | 6200 | 8200 |
 
+> **A local run drives the real device.** The `local` profile moves the ports and the two
+> sibling services, not the Shelly: ten seconds after the start the control pass switches the
+> relays in the boiler room. With the siblings not running locally both read as "not active",
+> so the pass turns the pumps and the furnace off — against the instance in the cluster, which
+> turns them back on within a minute. Override `shelly.actor.pro.boiler.host` unless that is
+> what you want.
+
 No database and no message broker — the only outbound traffic is HTTP: the Shelly Pro 4 in
 the boiler room and the two sibling services. Their addresses come from the `shelly.actor`
 and `internal.service.*` properties; the `local` profile points `heating-service` and

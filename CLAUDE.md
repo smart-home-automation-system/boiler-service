@@ -73,11 +73,18 @@ the first endpoint that calls the Shelly on request.
 
 ## Tests
 
-- No test class carries `@ActiveProfiles`; surefire activates the `test` profile for every
+- Surefire activates the `test` profile for every
   class (`systemPropertyVariables` in the pom), and the `test` document of `application.yaml`
   switches the console back to plain text and logbook to the `http` style. Without it the
   `@SpringBootTest` context installs the logstash encoder for every test that follows in the
   same JVM.
+- **A test context must never run the control pass** — on the home network it would switch the
+  real relays ten seconds after the context started. Two guards, both tied to the `test`
+  profile: `SchedulingConfig` (`@EnableScheduling`, `@Profile("!test")`) schedules nothing, and
+  the `test` document points the Shelly at `localhost:1`. Surefire activates the profile only
+  under Maven, so **every `@SpringBootTest` also carries `@ActiveProfiles("test")`** — started
+  from an IDE without it, the class comes up with `home` and the real address.
+  `BoilerServiceApplicationTest` pins that nothing is scheduled.
 - The client tests use `com.squareup.okhttp3:mockwebserver3` (`mockwebserver3.*`,
   `MockResponse.Builder`, `close()`). Do not go back to the legacy `mockwebserver` artifact —
   it puts JUnit 4 on the classpath, where a JUnit 4 test compiles and never runs.
@@ -96,8 +103,8 @@ the first endpoint that calls the Shelly on request.
   logbook 4.2.0 no pin is needed).
 - Run locally: `mvn spring-boot:run -Dspring-boot.run.profiles=local` — application on 6007,
   Actuator on 8007, `heating-service` and `water-service` expected on `localhost:6002` and
-  `localhost:6006`. **The Shelly address is the real device in every profile, so a local run
-  switches the real relays** — ten seconds after the start. With the neighbours not running
+  `localhost:6006`. **The Shelly address is the real device in every profile but `test`, so a
+  local run switches the real relays** — ten seconds after the start. With the neighbours not running
   locally both read as "not active", and the pass turns the pumps and the furnace off, against
   the instance in the cluster, which turns them back on within a minute. Start it locally only
   with the Shelly address overridden or with that fight understood.

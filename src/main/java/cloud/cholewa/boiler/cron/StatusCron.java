@@ -5,14 +5,12 @@ import cloud.cholewa.boiler.client.WaterClient;
 import cloud.cholewa.boiler.service.BoilerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 @Slf4j
 @Component
-@EnableScheduling
 @RequiredArgsConstructor
 public class StatusCron {
 

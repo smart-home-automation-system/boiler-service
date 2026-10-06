@@ -102,6 +102,14 @@ spring:
     activate:
       on-profile: test
 
+# second line of defence: SchedulingConfig does not schedule the control pass under this profile,
+# and should anything in a test call the Shelly client anyway, it must not reach the real device
+shelly:
+  actor:
+    pro.boiler:
+      host: localhost
+      port: 1
+
 logbook:
   format:
     style: http

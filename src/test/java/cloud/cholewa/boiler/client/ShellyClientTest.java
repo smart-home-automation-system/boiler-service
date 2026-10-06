@@ -42,7 +42,6 @@ class ShellyClientTest {
     }
 
     @AfterEach
-    @SneakyThrows
     void tearDown() {
         mockWebServer.close();
     }

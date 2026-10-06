@@ -35,7 +35,6 @@ class WaterClientTest {
     }
 
     @AfterEach
-    @SneakyThrows
     void tearDown() {
         mockWebServer.close();
     }

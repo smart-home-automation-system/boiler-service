@@ -35,7 +35,6 @@ class HeatingClientTest {
     }
 
     @AfterEach
-    @SneakyThrows
     void tearDown() {
         mockWebServer.close();
     }
