@@ -94,3 +94,19 @@ internal:
     water-service:
       host: localhost
       port: 6006
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: test
+
+logbook:
+  format:
+    style: http
+
+logging:
+  structured:
+    format:
+      console: ""

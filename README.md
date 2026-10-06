@@ -13,7 +13,7 @@
 
 ![GitHub top language](https://img.shields.io/github/languages/top/smart-home-automation-system/boiler-service?style=plastic)
 ![Java](https://img.shields.io/badge/java-21-yellow?style=plastic)
-![SpringBoot](https://img.shields.io/badge/SpringBoot-4.1.0-blue?style=plastic)
+![SpringBoot](https://img.shields.io/badge/SpringBoot-4.1.1-blue?style=plastic)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_boiler-service&metric=coverage)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_boiler-service)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_boiler-service&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_boiler-service)
 
@@ -70,11 +70,9 @@ and `internal.service.*` properties; the `local` profile points `heating-service
 
 ## API
 
-All paths are served under the `/home/boiler` base path (`spring.webflux.base-path`). The
-service is currently reachable inside the cluster only — the Kubernetes ingress has no rule
-for `/home/boiler`, and requests under `/home` land on `api-gateway-service`, which has no
-static route to this service (it relied on the Eureka discovery locator, dropped together
-with the Eureka client).
+All paths are served under the `/home/boiler` base path (`spring.webflux.base-path`). From
+outside the cluster the service is reached through `api-gateway-service`, which routes
+`/home/boiler/**` to it.
 
 | Method | Path | Description |
 |---|---|---|
