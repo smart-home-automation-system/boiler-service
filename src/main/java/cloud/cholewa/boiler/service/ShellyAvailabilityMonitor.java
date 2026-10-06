@@ -1,5 +1,6 @@
 package cloud.cholewa.boiler.service;
 
+import cloud.cholewa.boiler.client.ShellyCall;
 import cloud.cholewa.boiler.client.ShellyCallListener;
 import cloud.cholewa.boiler.config.ShellyMonitorProperties;
 import cloud.cholewa.boiler.rabbit.NotificationPublisher;
@@ -12,17 +13,23 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
  * Tells the household when the Shelly of the boiler room stops working: an alert once its calls
  * have been failing for {@code offlineAfter}, a reminder every {@code reminderInterval} while that
  * lasts, and one info when the device works again.
  * <p>
- * It judges the device by whole control passes, not by single calls. A pass in which any call
- * failed is a failed pass - the device may answer its status and refuse every command, or answer
- * one call in ten, and is not driven either way. Only a pass in which the device was called and
- * nothing failed says it works. A pass that did not call the device says nothing.
- * <p>
+ * It judges the device by whole control passes, not by single calls:
+ * <ul>
+ * <li>a pass in which any call failed is a <b>failed</b> pass - the device may answer its status
+ * and refuse every command, or answer one call in ten, and is not driven either way;</li>
+ * <li>a pass without a failed call <b>proves</b> the device works only when it answered every kind
+ * of call that had been failing - status reads say nothing about a device that refuses commands;</li>
+ * <li>any other pass - one that did not call the device, or not in the way that failed - says
+ * nothing: it neither ends an outage nor lets one be announced.</li>
+ * </ul>
  * The state lives in memory, like the rest of this service. After a restart in the middle of an
  * outage the new instance counts from its own first failed call, so the outage is announced a
  * second time, as an alert - a duplicate, never a silence.
@@ -46,34 +53,47 @@ public class ShellyAvailabilityMonitor implements ShellyCallListener {
     private final Clock clock;
 
     //what the calls of the pass in progress have shown so far
-    private boolean failedInPass;
-    private boolean answeredInPass;
-    //the first failed call since the last pass without one; null while the device works
+    private final Set<ShellyCall> answeredInPass = EnumSet.noneOf(ShellyCall.class);
+    private final Set<ShellyCall> failedInPass = EnumSet.noneOf(ShellyCall.class);
+
+    //the kinds of call that failed since the device was last proven to work, the first of those
+    //failures and the latest; empty and null while it works
+    private final Set<ShellyCall> failing = EnumSet.noneOf(ShellyCall.class);
     private Instant failingSince;
-    //the start of the outage the household was told about; null when there is nothing to take back
+    private Instant lastFailureAt;
+    //the failures have lasted for the limit, at the end of a failed pass, and nobody was told yet
+    private boolean alertDue;
+
+    //the start of the outage the household was told about - or, when the alert never got through,
+    //is about to hear of afterwards; null when there is nothing to take back
     private Instant reportedOutageSince;
-    //the end of that outage: the first pass without a failed call after it was reported
+    //the end of that outage: the first pass proving the device works
     private Instant reportedOutageEndedAt;
     private Instant lastReportAt;
 
     @Override
-    public synchronized void recordAnswer() {
-        answeredInPass = true;
+    public synchronized void recordAnswer(final ShellyCall call) {
+        answeredInPass.add(call);
     }
 
     @Override
-    public synchronized void recordFailure() {
-        failedInPass = true;
+    public synchronized void recordFailure(final ShellyCall call) {
+        final Instant now = clock.instant();
+
+        failedInPass.add(call);
+        failing.add(call);
+        lastFailureAt = now;
         if (failingSince == null) {
-            failingSince = clock.instant();
+            failingSince = now;
         }
     }
 
     /**
      * Closes the control pass and publishes what is due, if anything. Never signals an error and
      * never takes longer than {@link #PUBLISH_TIMEOUT}: a notification must neither fail nor stall
-     * the control of the furnace. The state moves on only once the broker has taken the message,
-     * so a failed one is tried again with the next failed pass.
+     * the control of the furnace. The state moves on only once the broker has taken the message:
+     * an alert or a reminder that failed is tried again at the end of the next failed pass, the
+     * news of a return at the end of the next pass, whatever that pass was like.
      */
     public Mono<Void> report() {
         //deferred: the reactive @Scheduled method calling this is invoked once and resubscribed for
@@ -91,18 +111,18 @@ public class ShellyAvailabilityMonitor implements ShellyCallListener {
     }
 
     private Mono<Void> due(final Pass pass) {
-        if (pass.reportedOutageSince() == null) {
-            return pass.failed() && lastsAtLeast(pass.failingSince(), pass.closedAt(), properties.offlineAfter())
-                ? notificationPublisher.publishAlert(alertText(pass.failingSince(), pass.closedAt()))
-                    .doOnSuccess(unused -> reported(pass.failingSince(), pass.closedAt()))
-                : Mono.empty();
-        }
-        //before anything else: the outage that was announced is over, and the household hears it
-        //even when this pass failed again - that is a new outage, counted from its own first failure
+        //before anything else: an outage is over, and the household hears it even when this pass
+        //failed again - that is a new outage, counted from its own first failure
         if (pass.reportedOutageEndedAt() != null) {
             return notificationPublisher
                 .publishInfo(recoveryText(pass.reportedOutageSince(), pass.reportedOutageEndedAt()))
                 .doOnSuccess(unused -> recovered());
+        }
+        if (pass.reportedOutageSince() == null) {
+            return pass.failed() && pass.alertDue()
+                ? notificationPublisher.publishAlert(alertText(pass.failingSince(), pass.closedAt()))
+                    .doOnSuccess(unused -> reported(pass.failingSince(), pass.closedAt()))
+                : Mono.empty();
         }
         return pass.failed() && lastsAtLeast(pass.lastReportAt(), pass.closedAt(), properties.reminderInterval())
             ? notificationPublisher.publishReminder(reminderText(pass.reportedOutageSince(), pass.closedAt()))
@@ -111,24 +131,51 @@ public class ShellyAvailabilityMonitor implements ShellyCallListener {
     }
 
     private synchronized Pass closePass(final Instant now) {
-        final boolean failed = failedInPass;
-        final boolean clean = answeredInPass && !failedInPass;
-        failedInPass = false;
-        answeredInPass = false;
+        final boolean failed = !failedInPass.isEmpty();
+        final boolean proven = !failed && !answeredInPass.isEmpty() && answeredInPass.containsAll(failing);
+        answeredInPass.clear();
+        failedInPass.clear();
 
-        if (clean) {
-            failingSince = null;
-            if (reportedOutageSince != null && reportedOutageEndedAt == null) {
-                reportedOutageEndedAt = now;
+        if (failingSince != null) {
+            if (failed) {
+                alertDue = alertDue
+                    || reportedOutageSince == null && lastsAtLeast(failingSince, now, properties.offlineAfter());
+            } else if (proven) {
+                endOutage(now);
+            } else if (reportedOutageSince == null && !alertDue
+                && lastsAtLeast(lastFailureAt, now, properties.offlineAfter())) {
+                //a failure nothing followed for as long as the limit: not an outage that is going
+                //on, and not something a failure hours later should be counted from
+                forgetFailures();
             }
         }
-        return new Pass(now, failed, failingSince, reportedOutageSince, reportedOutageEndedAt, lastReportAt);
+        return new Pass(now, failed, alertDue, failingSince, reportedOutageSince, reportedOutageEndedAt, lastReportAt);
+    }
+
+    private void endOutage(final Instant now) {
+        //the alert was due and never got through - the broker was down as well: the household
+        //still hears that the device was not driven, afterwards, with the news that it is back
+        if (reportedOutageSince == null && alertDue) {
+            reportedOutageSince = failingSince;
+        }
+        if (reportedOutageSince != null && reportedOutageEndedAt == null) {
+            reportedOutageEndedAt = now;
+        }
+        forgetFailures();
+    }
+
+    private void forgetFailures() {
+        failing.clear();
+        failingSince = null;
+        lastFailureAt = null;
+        alertDue = false;
     }
 
     private synchronized void reported(final Instant outageSince, final Instant now) {
         reportedOutageSince = outageSince;
         reportedOutageEndedAt = null;
         lastReportAt = now;
+        alertDue = false;
     }
 
     private synchronized void reminded(final Instant now) {
@@ -177,6 +224,7 @@ public class ShellyAvailabilityMonitor implements ShellyCallListener {
     private record Pass(
         Instant closedAt,
         boolean failed,
+        boolean alertDue,
         Instant failingSince,
         Instant reportedOutageSince,
         Instant reportedOutageEndedAt,

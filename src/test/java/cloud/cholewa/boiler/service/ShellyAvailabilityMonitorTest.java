@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import cloud.cholewa.boiler.client.ShellyCall;
 import cloud.cholewa.boiler.config.ShellyMonitorProperties;
 import cloud.cholewa.boiler.infrastructure.error.BoilerException;
 import cloud.cholewa.boiler.rabbit.NotificationPublisher;
@@ -126,25 +127,99 @@ class ShellyAvailabilityMonitorTest {
         verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
     }
 
-    //one failed call and then passes that do not call the device at all: the time goes by, but
-    //nothing says the device is still failing
+    //a pass that does not call the device says nothing: the time goes by, but nothing shows the
+    //device is still failing
     @Test
     void should_not_alert_or_remind_at_the_end_of_a_pass_that_did_not_call_the_device() {
         when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
 
         failedPass();
-        after(Duration.ofMinutes(10));
+        after(Duration.ofMinutes(4));
+        failedPass();
+        after(Duration.ofMinutes(3));
         idlePass();
 
         verifyNoInteractions(notificationPublisher);
 
+        after(Duration.ofMinutes(1));
         failedPass();
         after(Duration.ofHours(2));
         idlePass();
 
         verify(notificationPublisher).publishAlert("The Shelly in the boiler room has been failing calls since"
-            + " 2026-10-06 22:00 (10 min)." + CONSEQUENCE);
+            + " 2026-10-06 22:00 (8 min)." + CONSEQUENCE);
         verifyNoMoreInteractions(notificationPublisher);
+    }
+
+    //one failed call that nothing followed for as long as the limit is not an outage going on,
+    //and a second one hours later is not its continuation
+    @Test
+    void should_forget_a_failure_that_nothing_followed() {
+        failedPass();
+        after(Duration.ofMinutes(5));
+        idlePass();
+        after(Duration.ofHours(3));
+        failedPass();
+
+        verifyNoInteractions(notificationPublisher);
+    }
+
+    //the commands are refused and the status reads answer: a pass that had nothing to switch
+    //shows only answers, and proves nothing about the commands
+    @Test
+    void should_not_take_status_answers_for_the_return_of_a_device_that_refused_commands() {
+        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
+        when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
+
+        mixedPass();
+        after(Duration.ofMinutes(5));
+        mixedPass();
+        after(Duration.ofMinutes(1));
+        statusOnlyPass();
+
+        verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
+        verifyNoMoreInteractions(notificationPublisher);
+
+        after(Duration.ofMinutes(1));
+        commandAnsweredPass();
+
+        verify(notificationPublisher).publishInfo("The Shelly in the boiler room works again."
+            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:07 (7 min).");
+    }
+
+    //a status-only pass in between must not restart the count either
+    @Test
+    void should_keep_counting_across_a_pass_that_did_not_try_what_failed() {
+        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
+
+        mixedPass();
+        after(Duration.ofMinutes(3));
+        statusOnlyPass();
+        after(Duration.ofMinutes(2));
+        mixedPass();
+
+        verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
+    }
+
+    //the device and the broker were down together, and the device came back first: no alert
+    //ever got through, but the household still hears that the furnace was not driven
+    @Test
+    void should_announce_afterwards_an_outage_whose_alert_never_got_through() {
+        when(notificationPublisher.publishAlert(anyString()))
+            .thenReturn(Mono.error(new BoilerException("Notification refused by the broker: down")));
+        when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
+
+        failedPass();
+        after(Duration.ofMinutes(5));
+        failedPass();
+        after(Duration.ofMinutes(10));
+        cleanPass();
+        after(Duration.ofMinutes(1));
+        cleanPass();
+
+        verify(notificationPublisher).publishInfo("The Shelly in the boiler room works again."
+            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:15 (15 min).");
+        verify(notificationPublisher, times(1)).publishInfo(anyString());
     }
 
     @Test
@@ -269,7 +344,7 @@ class ShellyAvailabilityMonitorTest {
 
         failedPass();
         after(Duration.ofMinutes(5));
-        sut.recordFailure();
+        sut.recordFailure(ShellyCall.STATUS);
 
         sut.report().as(StepVerifier::create).verifyComplete();
     }
@@ -281,7 +356,7 @@ class ShellyAvailabilityMonitorTest {
 
         failedPass();
         after(Duration.ofMinutes(5));
-        sut.recordFailure();
+        sut.recordFailure(ShellyCall.STATUS);
 
         StepVerifier.withVirtualTime(() -> sut.report())
             .expectSubscription()
@@ -320,13 +395,13 @@ class ShellyAvailabilityMonitorTest {
         final Mono<Void> scheduled = sut.report();
 
         scheduled.as(StepVerifier::create).verifyComplete();
-        sut.recordFailure();
+        sut.recordFailure(ShellyCall.STATUS);
         scheduled.as(StepVerifier::create).verifyComplete();
 
         verifyNoInteractions(notificationPublisher);
 
         after(Duration.ofMinutes(5));
-        sut.recordFailure();
+        sut.recordFailure(ShellyCall.STATUS);
         scheduled.as(StepVerifier::create).verifyComplete();
 
         verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
@@ -340,20 +415,32 @@ class ShellyAvailabilityMonitorTest {
     }
 
     private void failedPass() {
-        sut.recordFailure();
+        sut.recordFailure(ShellyCall.STATUS);
         report();
     }
 
     private void cleanPass() {
-        sut.recordAnswer();
+        sut.recordAnswer(ShellyCall.STATUS);
         report();
     }
 
     //what a device answering its status and refusing a command looks like
     private void mixedPass() {
-        sut.recordAnswer();
-        sut.recordFailure();
-        sut.recordAnswer();
+        sut.recordAnswer(ShellyCall.STATUS);
+        sut.recordFailure(ShellyCall.COMMAND);
+        sut.recordAnswer(ShellyCall.STATUS);
+        report();
+    }
+
+    //the same device in a pass that had nothing to switch
+    private void statusOnlyPass() {
+        sut.recordAnswer(ShellyCall.STATUS);
+        report();
+    }
+
+    private void commandAnsweredPass() {
+        sut.recordAnswer(ShellyCall.STATUS);
+        sut.recordAnswer(ShellyCall.COMMAND);
         report();
     }
 

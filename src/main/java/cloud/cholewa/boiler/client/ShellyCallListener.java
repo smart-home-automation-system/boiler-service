@@ -6,12 +6,12 @@ package cloud.cholewa.boiler.client;
  */
 public interface ShellyCallListener {
 
-    /** The device answered a call, whatever the call was. */
-    void recordAnswer();
+    /** The device answered a call of this kind. */
+    void recordAnswer(ShellyCall call);
 
     /**
-     * A call failed: no connection, no answer in time, an error status, or an answer that is not
-     * one - an empty body, something that does not decode.
+     * A call of this kind failed: no connection, no answer in time, an error status, or an answer
+     * that is not one - an empty body, something that does not decode, JSON of another shape.
      */
-    void recordFailure();
+    void recordFailure(ShellyCall call);
 }

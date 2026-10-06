@@ -74,24 +74,34 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
 (HAS-68) and will be a change in `notification-service`, not here.
 
 - **`ShellyClient` is the only source of truth.** All six calls go through `watched(...)`,
-  which tells a `ShellyCallListener` — the monitor — how the call ended. A failure is
+  which tells a `ShellyCallListener` — the monitor — how the call ended and which kind it was
+  (`ShellyCall.STATUS` or `COMMAND`). A failure is
   everything that leaves the device undriven: no connection, a timeout, a 4xx or 5xx, a 200
   that does not decode, a 200 without a body, and a 200 with JSON that is not the model
   (`{}` decodes into an object of nulls and used to read as "the relay is off" — each call
-  now checks the one field it is made for). A new call to the Shelly goes through
+  now checks the one field it is made for: `output` of a status, `ison` of a command. The
+  real device was seen sending `output` in the production log; no command ran in the window
+  looked at, so `ison` rests on the Shelly documentation and on the services having read it
+  all along — **watch the first relay switch after the deploy**). A new call to the Shelly goes through
   `watched(...)` as well. The listener is an interface in the `client` package so that the
   client does not depend on the services that use it.
 - **The device is judged by whole passes, not by single calls.** A pass in which any call
-  failed is a failed pass; only a pass that called the device and had no failure says it
-  works; a pass that did not call it says nothing. Judged call by call, two devices that are
-  not driven would never be reported: one whose status reads answer while every command is
-  refused (a firmware update changing one path), and one that gets a call through now and
-  then — and after an alert, every stray answer would send a green "works again" followed by
-  a new red alert five minutes later.
-- **The outage is counted from the first failed call after the last clean pass**, an alert or
-  a reminder goes out only at the end of a failed pass, and a reported outage ends with the
-  first clean pass. Time alone proves nothing: one old failed call must not become an alert
-  because passes went by.
+  failed is a **failed** pass. A pass without a failure **proves** the device works only when
+  it answered every kind of call that had been failing. Every other pass — one that did not
+  call the device, or made only status reads while it is the commands that fail — says
+  nothing. Judged call by call, two devices that are not driven would never be reported: one
+  whose status reads answer while every command is refused (a firmware update changing one
+  path), and one that gets a call through now and then — and after an alert, every stray
+  answer would send a green "works again" followed by a new red alert five minutes later.
+- **The outage is counted from the first failed call after the device was last proven to
+  work.** An alert or a reminder goes out only at the end of a failed pass, and a reported
+  outage ends with the first pass that proves the device. Time alone proves nothing: a
+  failure that nothing followed for as long as `offline-after` is forgotten, so a second one
+  hours later does not read as "failing since this morning".
+- **An outage whose alert never got through is announced afterwards.** The device and the
+  broker tend to go down together (power, network). If the alert was due and the device comes
+  back before the broker, the info "works again, its calls failed from … to …" still goes out
+  once the broker takes it.
 - **The texts say "failing calls", not "offline"**, and that the furnace and the pumps "may
   not be controlled": a device answering 401 to its commands is not a power cut, and the
   alert should not send the owner looking for one.
@@ -108,8 +118,9 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
   that, accepted: a broker so slow that it confirms after the 10 s limit has taken the
   message, and the next pass sends it again — duplicates for as long as the broker is that
   slow. And a broker that hangs holds the end of the pass for up to 30 s; with `fixedDelay`
-  the next pass starts that much later. A pending message is tried again only at the end of
-  a failed pass — during an outage that is every pass.
+  the next pass starts that much later. A pending alert or reminder is tried again at the end
+  of the next failed pass — during an outage that is every pass; the pending news of a
+  return at the end of every pass.
 - **The state is in memory.** After a restart during an outage the new pod counts from its own
   first failed call and sends the alert again five minutes later; if the device returns
   before that, no info is sent, because this pod never reported it gone. A duplicate, never a

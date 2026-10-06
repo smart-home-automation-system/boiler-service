@@ -19,7 +19,6 @@ import reactor.test.StepVerifier;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
@@ -64,7 +63,7 @@ class ShellyClientTest {
 
         sut.controlFurnace(true).as(StepVerifier::create).expectNextCount(1).verifyComplete();
 
-        verify(callListener).recordAnswer();
+        verify(callListener).recordAnswer(ShellyCall.COMMAND);
         verifyNoMoreInteractions(callListener);
     }
 
@@ -77,7 +76,7 @@ class ShellyClientTest {
 
         sut.getFurnaceStatus().as(StepVerifier::create).verifyError(BoilerException.class);
 
-        verify(callListener).recordFailure();
+        verify(callListener).recordFailure(ShellyCall.STATUS);
         verifyNoMoreInteractions(callListener);
     }
 
@@ -93,7 +92,7 @@ class ShellyClientTest {
 
         sut.getHeatingPumpStatus().as(StepVerifier::create).verifyError(BoilerException.class);
 
-        verify(callListener).recordFailure();
+        verify(callListener).recordFailure(ShellyCall.STATUS);
         verifyNoMoreInteractions(callListener);
     }
 
@@ -116,7 +115,8 @@ class ShellyClientTest {
         sut.getFurnaceStatus().as(StepVerifier::create).verifyError(BoilerException.class);
         sut.controlFurnace(false).as(StepVerifier::create).verifyError(BoilerException.class);
 
-        verify(callListener, times(2)).recordFailure();
+        verify(callListener).recordFailure(ShellyCall.STATUS);
+        verify(callListener).recordFailure(ShellyCall.COMMAND);
         verifyNoMoreInteractions(callListener);
     }
 
@@ -134,7 +134,7 @@ class ShellyClientTest {
                 .isInstanceOf(BoilerException.class)
                 .hasMessage("Error fetching water pump status"));
 
-        verify(callListener).recordFailure();
+        verify(callListener).recordFailure(ShellyCall.STATUS);
         verifyNoMoreInteractions(callListener);
     }
 
@@ -149,7 +149,7 @@ class ShellyClientTest {
 
         sut.controlHeatingPump(true).as(StepVerifier::create).verifyError(BoilerException.class);
 
-        verify(callListener).recordFailure();
+        verify(callListener).recordFailure(ShellyCall.COMMAND);
         verifyNoMoreInteractions(callListener);
     }
 
@@ -159,7 +159,7 @@ class ShellyClientTest {
 
         sut.controlWaterPump(true).as(StepVerifier::create).verifyError(BoilerException.class);
 
-        verify(callListener).recordFailure();
+        verify(callListener).recordFailure(ShellyCall.COMMAND);
         verifyNoMoreInteractions(callListener);
     }
 
