@@ -2,6 +2,7 @@ package cloud.cholewa.boiler.client;
 
 import cloud.cholewa.boiler.config.ShellyConfig;
 import cloud.cholewa.boiler.infrastructure.error.BoilerException;
+import cloud.cholewa.boiler.service.ShellyAvailabilityMonitor;
 import cloud.cholewa.shelly.model.Relay;
 import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.SneakyThrows;
@@ -18,8 +19,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 class ShellyClientTest {
+
+    private final ShellyAvailabilityMonitor availabilityMonitor = mock(ShellyAvailabilityMonitor.class);
 
     private MockWebServer mockWebServer;
     private ShellyClient sut;
@@ -38,12 +44,67 @@ class ShellyClientTest {
         ReflectionTestUtils.setField(config, "relayWaterPump", "1");
         ReflectionTestUtils.setField(config, "relayHeating", "2");
 
-        sut = new ShellyClient(config, WebClient.create());
+        sut = new ShellyClient(config, WebClient.create(), availabilityMonitor);
     }
 
     @AfterEach
     void tearDown() {
         mockWebServer.close();
+    }
+
+    //the monitor decides when the household is told the device is gone, from these two signals
+    @Test
+    void should_tell_the_monitor_that_the_device_answered() {
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
+            .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .body("{\"ison\": true}")
+            .build()
+        );
+
+        sut.controlFurnace(true).as(StepVerifier::create).expectNextCount(1).verifyComplete();
+
+        verify(availabilityMonitor).recordAnswer();
+        verifyNoMoreInteractions(availabilityMonitor);
+    }
+
+    @Test
+    void should_tell_the_monitor_that_the_device_answered_with_an_error() {
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.INTERNAL_SERVER_ERROR.value())
+            .build()
+        );
+
+        sut.getFurnaceStatus().as(StepVerifier::create).verifyError(BoilerException.class);
+
+        verify(availabilityMonitor).recordFailure();
+        verifyNoMoreInteractions(availabilityMonitor);
+    }
+
+    //a 200 that is not the answer of a Shelly - a captive portal, another device on the address
+    @Test
+    void should_tell_the_monitor_that_the_answer_was_not_one() {
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
+            .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .body("{ not json")
+            .build()
+        );
+
+        sut.getHeatingPumpStatus().as(StepVerifier::create).verifyError(BoilerException.class);
+
+        verify(availabilityMonitor).recordFailure();
+        verifyNoMoreInteractions(availabilityMonitor);
+    }
+
+    @Test
+    void should_tell_the_monitor_that_the_device_is_unreachable() {
+        mockWebServer.close();
+
+        sut.controlWaterPump(true).as(StepVerifier::create).verifyError(BoilerException.class);
+
+        verify(availabilityMonitor).recordFailure();
+        verifyNoMoreInteractions(availabilityMonitor);
     }
 
     @Test

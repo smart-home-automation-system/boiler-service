@@ -18,8 +18,11 @@ review.
   on the LAN over HTTP.
 - Is called by: anything outside the cluster through `api-gateway-service`
   (`/home/boiler/**`); no service inside the cluster calls it.
-- No database and no RabbitMQ. The `cholewa-commons` R2DBC auto-configuration stays inactive —
-  there is no R2DBC on the classpath and no `database.host`; keep it that way.
+- Publishes to: the headers exchange `notification` on the `/notification` virtual host of
+  RabbitMQ (HAS-109) — an alert when the Shelly stops answering, read by
+  `notification-service`. It consumes nothing.
+- No database. The `cholewa-commons` R2DBC auto-configuration stays inactive — there is no
+  R2DBC on the classpath and no `database.host`; keep it that way.
 - Uses libraries: `cholewa-commons` (error handling), `smart-home-sdk` (`SystemActiveReply`
   only), `shelly-client` (`Relay`, `ShellyPro4StatusResponse`).
 - One endpoint: `GET /home/boiler/status`, a read of the in-memory state.
@@ -59,6 +62,53 @@ heating pump, furnace**.
   `updateStatus` is computed while the `Mono` is built — keep time and state reads inside
   operator lambdas or `Mono.defer`, as the services do.
 
+## The Shelly monitor — telling the household the device is gone (HAS-109)
+
+A Shelly that stops answering used to show only in the log, as three skipped steps a minute,
+while the furnace kept the state it was left in. `ShellyAvailabilityMonitor` turns that into
+notifications: an **alert** (`error`) once every call has failed for
+`boiler.shelly-monitor.offline-after` (5 min), a **reminder** (`warn`) every
+`reminder-interval` (1 h) while it lasts, one **info** when the device answers again. The
+numbers are the owner's (2026-10-06): five minutes lets a restart or a firmware update pass
+unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS library
+(HAS-68) and will be a change in `notification-service`, not here.
+
+- **`ShellyClient` is the only source of truth.** All six calls go through `watched(...)`,
+  which tells the monitor how the call ended: any answer clears the outage, any failure — no
+  connection, a timeout, a 5xx, a 200 that does not decode — starts or continues it. They all
+  go to the one device, so there is no per-relay state. A new call to the Shelly goes through
+  `watched(...)` as well.
+- **The silence is counted from the first failure after the last answer**, not from the last
+  answer: a pass that for some reason calls the device not at all proves nothing either way.
+- **`StatusCron` asks the monitor at the end of every pass**, after the devices were driven.
+  `report()` never signals an error — a broker that is down must not fail the control pass —
+  and it is deferred, because the reactive `@Scheduled` method is invoked once and
+  resubscribed; `ShellyAvailabilityMonitorTest` subscribes twice to the same `Mono` for that.
+- **The state moves on only when the broker has taken the message** (correlated confirm and no
+  return, `NotificationPublisher`). A failed publish is logged at ERROR and tried again with
+  the next pass, as the same kind of message — so a broker outage delays an alert by a
+  minute at a time, it does not turn it into a reminder an hour later.
+- **The state is in memory.** After a restart during an outage the new pod counts from its own
+  first failed call and sends the alert again five minutes later; if the device returns
+  before that, no info is sent, because this pod never reported it gone. A duplicate, never a
+  silence — accepted instead of a database.
+- **One connection, auto-configured.** Publishing is all this service does on the broker, so
+  `spring.rabbitmq.*` points straight at the `/notification` virtual host and the
+  auto-configured `RabbitTemplate` is used — unlike `heating-service`, which needs a second,
+  hand-built connection. Do not declare a `ConnectionFactory` or `RabbitTemplate` bean:
+  `RabbitAutoConfiguration` backs off, and `mandatory`, `observation-enabled`, the confirms and
+  the returns set in `application.yaml` are silently lost. `BoilerServiceApplicationTest` pins
+  them. Should the service ever consume from another virtual host, that takes the
+  `heating-service` shape (`NotificationRabbitConfig` there).
+- The broker password (`rabbitmq-password`, the key `notification-password` of the secret
+  `rabbitmq`) has **no default** outside the `test` document: with one the pod would start,
+  turn Ready and fail every publish. The connection is opened by the first publish, so a wrong
+  password shows only with the first alert — the smoke test after a deploy is a look at the
+  log of a forced publish, not a green rollout.
+- The connection is named after the pod (`RabbitConfig`, the org convention of HAS-106).
+- `ShellyMonitorProperties` has a unit and both bounds: a bare number is minutes, `offline-after`
+  2 min – 1 h, `reminder-interval` 5 min – 24 h.
+
 ## Errors
 
 `BoilerExceptionProcessor` answers a `BoilerException` with 500 and logs it at ERROR in the
@@ -84,7 +134,8 @@ the first endpoint that calls the Shelly on request.
   the `test` document points the Shelly at `localhost:1`. Surefire activates the profile only
   under Maven, so **every `@SpringBootTest` also carries `@ActiveProfiles("test")`** — started
   from an IDE without it, the class comes up with `home` and the real address.
-  `BoilerServiceApplicationTest` pins that nothing is scheduled.
+  `BoilerServiceApplicationTest` pins that nothing is scheduled. Nothing in a test connects
+  to the broker either: no listener exists, and a publisher connects with its first send.
 - The client tests use `com.squareup.okhttp3:mockwebserver3` (`mockwebserver3.*`,
   `MockResponse.Builder`, `close()`). Do not go back to the legacy `mockwebserver` artifact —
   it puts JUnit 4 on the classpath, where a JUnit 4 test compiles and never runs.
@@ -104,7 +155,8 @@ the first endpoint that calls the Shelly on request.
 - Run locally: `mvn spring-boot:run -Dspring-boot.run.profiles=local` — application on 6007,
   Actuator on 8007, `heating-service` and `water-service` expected on `localhost:6002` and
   `localhost:6006`. **The Shelly address is the real device in every profile but `test`, so a
-  local run switches the real relays** — ten seconds after the start. With the neighbours not running
+  local run switches the real relays** — ten seconds after the start. It also needs
+  `rabbitmq-password` in the environment (any value, unless a notification is to be published). With the neighbours not running
   locally both read as "not active", and the pass turns the pumps and the furnace off, against
   the instance in the cluster, which turns them back on within a minute. Start it locally only
   with the Shelly address overridden or with that fight understood.

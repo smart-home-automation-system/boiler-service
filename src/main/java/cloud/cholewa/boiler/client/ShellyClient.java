@@ -2,6 +2,7 @@ package cloud.cholewa.boiler.client;
 
 import cloud.cholewa.boiler.config.ShellyConfig;
 import cloud.cholewa.boiler.infrastructure.error.BoilerException;
+import cloud.cholewa.boiler.service.ShellyAvailabilityMonitor;
 import cloud.cholewa.shelly.model.Relay;
 import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ public class ShellyClient {
 
     private final ShellyConfig shellyConfig;
     private final WebClient shellyWebClient;
+    private final ShellyAvailabilityMonitor availabilityMonitor;
 
     public Mono<ShellyPro4StatusResponse> getWaterPumpStatus() {
         return shellyWebClient
@@ -28,8 +30,7 @@ public class ShellyClient {
             .uri(uriBuilder -> shellyConfig.getStatusUriBuilder(uriBuilder, HOT_WATER).build())
             .retrieve()
             .bodyToMono(ShellyPro4StatusResponse.class)
-            .doOnError(throwable -> log.error("Error fetching water pump status", throwable))
-            .onErrorMap(throwable -> new BoilerException("Error fetching water pump status"));
+            .transform(call -> watched(call, "Error fetching water pump status"));
     }
 
     public Mono<Relay> controlWaterPump(final boolean enable) {
@@ -40,8 +41,7 @@ public class ShellyClient {
                 .build())
             .retrieve()
             .bodyToMono(Relay.class)
-            .doOnError(throwable -> log.error("Error controlling water pump", throwable))
-            .onErrorMap(throwable -> new BoilerException("Error controlling water pump"));
+            .transform(call -> watched(call, "Error controlling water pump"));
     }
 
     public Mono<ShellyPro4StatusResponse> getHeatingPumpStatus() {
@@ -50,8 +50,7 @@ public class ShellyClient {
             .uri(uriBuilder -> shellyConfig.getStatusUriBuilder(uriBuilder, HEATING).build())
             .retrieve()
             .bodyToMono(ShellyPro4StatusResponse.class)
-            .doOnError(throwable -> log.error("Error fetching heating pump status", throwable))
-            .onErrorMap(throwable -> new BoilerException("Error fetching heating pump status"));
+            .transform(call -> watched(call, "Error fetching heating pump status"));
     }
 
     public Mono<Relay> controlHeatingPump(final boolean enable) {
@@ -62,8 +61,7 @@ public class ShellyClient {
                 .build())
             .retrieve()
             .bodyToMono(Relay.class)
-            .doOnError(throwable -> log.error("Error controlling heating pump", throwable))
-            .onErrorMap(throwable -> new BoilerException("Error controlling heating pump"));
+            .transform(call -> watched(call, "Error controlling heating pump"));
     }
 
     public Mono<ShellyPro4StatusResponse> getFurnaceStatus() {
@@ -72,8 +70,7 @@ public class ShellyClient {
             .uri(uriBuilder -> shellyConfig.getStatusUriBuilder(uriBuilder, FURNACE).build())
             .retrieve()
             .bodyToMono(ShellyPro4StatusResponse.class)
-            .doOnError(throwable -> log.error("Error fetching furnace status", throwable))
-            .onErrorMap(throwable -> new BoilerException("Error fetching furnace status"));
+            .transform(call -> watched(call, "Error fetching furnace status"));
     }
 
     public Mono<Relay> controlFurnace(final boolean enable) {
@@ -84,7 +81,19 @@ public class ShellyClient {
                 .build())
             .retrieve()
             .bodyToMono(Relay.class)
-            .doOnError(throwable -> log.error("Error controlling furnace", throwable))
-            .onErrorMap(throwable -> new BoilerException("Error controlling furnace"));
+            .transform(call -> watched(call, "Error controlling furnace"));
+    }
+
+    //what every call to the device has in common: the monitor hears about its outcome - all six go
+    //to the one Shelly, so any answer says it is there and any failure that it may not be - and a
+    //failure leaves as a BoilerException with a fixed text, the cause staying in the log
+    private <T> Mono<T> watched(final Mono<T> call, final String failure) {
+        return call
+            .doOnNext(answer -> availabilityMonitor.recordAnswer())
+            .doOnError(throwable -> {
+                log.error(failure, throwable);
+                availabilityMonitor.recordFailure();
+            })
+            .onErrorMap(throwable -> new BoilerException(failure));
     }
 }
