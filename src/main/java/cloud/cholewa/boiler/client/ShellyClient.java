@@ -2,7 +2,6 @@ package cloud.cholewa.boiler.client;
 
 import cloud.cholewa.boiler.config.ShellyConfig;
 import cloud.cholewa.boiler.infrastructure.error.BoilerException;
-import cloud.cholewa.boiler.service.ShellyAvailabilityMonitor;
 import cloud.cholewa.shelly.model.Relay;
 import cloud.cholewa.shelly.model.ShellyPro4StatusResponse;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +21,7 @@ public class ShellyClient {
 
     private final ShellyConfig shellyConfig;
     private final WebClient shellyWebClient;
-    private final ShellyAvailabilityMonitor availabilityMonitor;
+    private final ShellyCallListener callListener;
 
     public Mono<ShellyPro4StatusResponse> getWaterPumpStatus() {
         return shellyWebClient
@@ -84,15 +83,18 @@ public class ShellyClient {
             .transform(call -> watched(call, "Error controlling furnace"));
     }
 
-    //what every call to the device has in common: the monitor hears about its outcome - all six go
-    //to the one Shelly, so any answer says it is there and any failure that it may not be - and a
+    //what every call to the device has in common: the listener hears about its outcome - all six
+    //go to the one Shelly, so any answer says it works and any failure that it may not - and a
     //failure leaves as a BoilerException with a fixed text, the cause staying in the log
     private <T> Mono<T> watched(final Mono<T> call, final String failure) {
         return call
-            .doOnNext(answer -> availabilityMonitor.recordAnswer())
+            //a 2xx without a body completes without a value: neither an answer nor an error, so
+            //nobody would ever hear that the device stopped saying anything
+            .switchIfEmpty(Mono.error(() -> new IllegalStateException("The device answered without a body")))
+            .doOnNext(answer -> callListener.recordAnswer())
             .doOnError(throwable -> {
                 log.error(failure, throwable);
-                availabilityMonitor.recordFailure();
+                callListener.recordFailure();
             })
             .onErrorMap(throwable -> new BoilerException(failure));
     }

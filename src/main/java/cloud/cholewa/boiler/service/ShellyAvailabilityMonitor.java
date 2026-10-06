@@ -1,5 +1,6 @@
 package cloud.cholewa.boiler.service;
 
+import cloud.cholewa.boiler.client.ShellyCallListener;
 import cloud.cholewa.boiler.config.ShellyMonitorProperties;
 import cloud.cholewa.boiler.rabbit.NotificationPublisher;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +14,7 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Tells the household when the Shelly of the boiler room stops answering: an alert once every call
+ * Tells the household when the Shelly of the boiler room stops working: an alert once every call
  * has failed for {@code offlineAfter}, a reminder every {@code reminderInterval} while that lasts,
  * and one info when the device answers again.
  * <p>
@@ -24,7 +25,7 @@ import java.time.format.DateTimeFormatter;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ShellyAvailabilityMonitor {
+public class ShellyAvailabilityMonitor implements ShellyCallListener {
 
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final String DEVICE = "The Shelly in the boiler room";
@@ -36,17 +37,26 @@ public class ShellyAvailabilityMonitor {
 
     //the first failed call since the device last answered; null while it answers
     private Instant failingSince;
+    //whether a call failed since the monitor was last asked: an alert takes fresh evidence, a
+    //pass that did not call the device at all says nothing about it
+    private boolean failedSinceLastReport;
     //the start of the outage the household was told about; null when there is nothing to take back
     private Instant reportedOutageSince;
+    //the first answer after that outage was reported; it ends there, whatever happens next
+    private Instant reportedOutageEndedAt;
     private Instant lastReportAt;
 
-    /** The device answered a call, whatever the call was. */
+    @Override
     public synchronized void recordAnswer() {
         failingSince = null;
+        if (reportedOutageSince != null && reportedOutageEndedAt == null) {
+            reportedOutageEndedAt = clock.instant();
+        }
     }
 
-    /** A call to the device failed: no connection, no answer in time, or an answer that is not one. */
+    @Override
     public synchronized void recordFailure() {
+        failedSinceLastReport = true;
         if (failingSince == null) {
             failingSince = clock.instant();
         }
@@ -73,30 +83,37 @@ public class ShellyAvailabilityMonitor {
     }
 
     private Mono<Void> due(final State state, final Instant now) {
-        if (state.failingSince() == null) {
-            return state.reportedOutageSince() == null
-                ? Mono.empty()
-                : notificationPublisher.publishInfo(recoveryText(state.reportedOutageSince(), now))
-                    .doOnSuccess(unused -> recovered());
-        }
         if (state.reportedOutageSince() == null) {
-            return lastsAtLeast(state.failingSince(), now, properties.offlineAfter())
+            return state.failingSince() != null
+                && state.failedSinceLastReport()
+                && lastsAtLeast(state.failingSince(), now, properties.offlineAfter())
                 ? notificationPublisher.publishAlert(alertText(state.failingSince(), now))
                     .doOnSuccess(unused -> reported(state.failingSince(), now))
                 : Mono.empty();
         }
-        return lastsAtLeast(state.lastReportAt(), now, properties.reminderInterval())
+        //before anything else about the device: the outage that was announced is over, even when
+        //the calls already fail again - that is a new outage, counted from its own first failure
+        if (state.reportedOutageEndedAt() != null) {
+            return notificationPublisher
+                .publishInfo(recoveryText(state.reportedOutageSince(), state.reportedOutageEndedAt()))
+                .doOnSuccess(unused -> recovered());
+        }
+        return state.failedSinceLastReport() && lastsAtLeast(state.lastReportAt(), now, properties.reminderInterval())
             ? notificationPublisher.publishReminder(reminderText(state.reportedOutageSince(), now))
                 .doOnSuccess(unused -> reminded(now))
             : Mono.empty();
     }
 
     private synchronized State snapshot() {
-        return new State(failingSince, reportedOutageSince, lastReportAt);
+        final State state = new State(
+            failingSince, failedSinceLastReport, reportedOutageSince, reportedOutageEndedAt, lastReportAt);
+        failedSinceLastReport = false;
+        return state;
     }
 
     private synchronized void reported(final Instant outageSince, final Instant now) {
         reportedOutageSince = outageSince;
+        reportedOutageEndedAt = null;
         lastReportAt = now;
     }
 
@@ -106,6 +123,7 @@ public class ShellyAvailabilityMonitor {
 
     private synchronized void recovered() {
         reportedOutageSince = null;
+        reportedOutageEndedAt = null;
         lastReportAt = null;
     }
 
@@ -113,32 +131,41 @@ public class ShellyAvailabilityMonitor {
         return !Duration.between(since, now).minus(limit).isNegative();
     }
 
+    //"failed every call", not "is offline": a device that answers 401 or 500 to everything is not
+    //driven either, and whoever reads the alert should not look for a power cut only
     private String alertText(final Instant since, final Instant now) {
-        return DEVICE + " has not answered since " + time(since) + " (" + span(since, now) + ")." + CONSEQUENCE;
-    }
-
-    private String reminderText(final Instant since, final Instant now) {
-        return DEVICE + " is still not answering - since " + time(since) + " (" + span(since, now) + ")."
+        return DEVICE + " has failed every call since " + time(since) + " (" + span(since, now) + ")."
             + CONSEQUENCE;
     }
 
-    private String recoveryText(final Instant since, final Instant now) {
-        return DEVICE + " answers again. It was silent from " + time(since) + " to " + time(now)
-            + " (" + span(since, now) + ").";
+    private String reminderText(final Instant since, final Instant now) {
+        return DEVICE + " is still failing every call - since " + time(since) + " (" + span(since, now) + ")."
+            + CONSEQUENCE;
+    }
+
+    private String recoveryText(final Instant since, final Instant until) {
+        return DEVICE + " answers again. Its calls failed from " + time(since) + " to " + time(until)
+            + " (" + span(since, until) + ").";
     }
 
     private String time(final Instant instant) {
         return TIME.format(instant.atZone(clock.getZone()));
     }
 
-    private static String span(final Instant since, final Instant now) {
-        final Duration duration = Duration.between(since, now);
+    private static String span(final Instant since, final Instant until) {
+        final Duration duration = Duration.between(since, until);
         final long hours = duration.toHours();
         final int minutes = duration.toMinutesPart();
 
         return hours == 0 ? minutes + " min" : hours + " h " + minutes + " min";
     }
 
-    private record State(Instant failingSince, Instant reportedOutageSince, Instant lastReportAt) {
+    private record State(
+        Instant failingSince,
+        boolean failedSinceLastReport,
+        Instant reportedOutageSince,
+        Instant reportedOutageEndedAt,
+        Instant lastReportAt
+    ) {
     }
 }

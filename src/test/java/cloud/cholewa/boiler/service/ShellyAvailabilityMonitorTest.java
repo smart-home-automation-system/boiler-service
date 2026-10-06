@@ -32,7 +32,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ShellyAvailabilityMonitorTest {
 
-    private static final String ALERT_AFTER_5_MIN = "The Shelly in the boiler room has not answered since"
+    private static final String ALERT_AFTER_5_MIN = "The Shelly in the boiler room has failed every call since"
         + " 2026-10-06 22:00 (5 min). The furnace and the pumps are not being controlled.";
 
     @Mock
@@ -106,7 +106,7 @@ class ShellyAvailabilityMonitorTest {
         failFor(Duration.ofMinutes(1));
         report();
 
-        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has not answered since"
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
             + " 2026-10-06 22:04 (5 min). The furnace and the pumps are not being controlled.");
     }
 
@@ -130,9 +130,9 @@ class ShellyAvailabilityMonitorTest {
         failFor(Duration.ofMinutes(30));
         report();
 
-        verify(notificationPublisher).publishReminder("The Shelly in the boiler room is still not answering -"
+        verify(notificationPublisher).publishReminder("The Shelly in the boiler room is still failing every call -"
             + " since 2026-10-06 22:00 (1 h 5 min). The furnace and the pumps are not being controlled.");
-        verify(notificationPublisher).publishReminder("The Shelly in the boiler room is still not answering -"
+        verify(notificationPublisher).publishReminder("The Shelly in the boiler room is still failing every call -"
             + " since 2026-10-06 22:00 (2 h 5 min). The furnace and the pumps are not being controlled.");
         verifyNoMoreInteractions(notificationPublisher);
     }
@@ -152,8 +152,59 @@ class ShellyAvailabilityMonitorTest {
         report();
 
         verify(notificationPublisher).publishInfo("The Shelly in the boiler room answers again."
-            + " It was silent from 2026-10-06 22:00 to 2026-10-06 22:25 (25 min).");
+            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:25 (25 min).");
         verify(notificationPublisher, times(1)).publishAlert(anyString());
+        verifyNoMoreInteractions(notificationPublisher);
+    }
+
+    //the first call of a pass answers and the next ones fail again: the announced outage is over
+    //all the same, and what follows is a new one with a start and a limit of its own
+    @Test
+    void should_end_the_reported_outage_when_the_device_answered_and_failed_again_within_one_pass() {
+        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
+        when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
+
+        failFor(Duration.ofMinutes(5));
+        report();
+        failFor(Duration.ofMinutes(15));
+        sut.recordAnswer();
+        sut.recordFailure();
+        report();
+
+        verify(notificationPublisher).publishInfo("The Shelly in the boiler room answers again."
+            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:20 (20 min).");
+
+        failFor(Duration.ofMinutes(4));
+        report();
+        failFor(Duration.ofMinutes(1));
+        report();
+
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
+            + " 2026-10-06 22:20 (5 min). The furnace and the pumps are not being controlled.");
+        verify(notificationPublisher, times(2)).publishAlert(anyString());
+        verifyNoMoreInteractions(notificationPublisher);
+    }
+
+    //one failed call and then passes that do not call the device at all: the time goes by, but
+    //nothing says the device is still failing
+    @Test
+    void should_not_alert_or_remind_on_a_pass_without_a_fresh_failure() {
+        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
+
+        sut.recordFailure();
+        report();
+        clock.advance(Duration.ofMinutes(10));
+        report();
+
+        verifyNoInteractions(notificationPublisher);
+
+        sut.recordFailure();
+        report();
+        clock.advance(Duration.ofHours(2));
+        report();
+
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
+            + " 2026-10-06 22:00 (10 min). The furnace and the pumps are not being controlled.");
         verifyNoMoreInteractions(notificationPublisher);
     }
 
@@ -180,7 +231,7 @@ class ShellyAvailabilityMonitorTest {
         report();
 
         verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
-        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has not answered since"
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
             + " 2026-10-06 22:05 (5 min). The furnace and the pumps are not being controlled.");
     }
 
@@ -201,7 +252,7 @@ class ShellyAvailabilityMonitorTest {
         report();
 
         verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
-        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has not answered since"
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
             + " 2026-10-06 22:00 (6 min). The furnace and the pumps are not being controlled.");
         verifyNoMoreInteractions(notificationPublisher);
         assertThat(logs.list)

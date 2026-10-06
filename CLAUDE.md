@@ -74,12 +74,23 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
 (HAS-68) and will be a change in `notification-service`, not here.
 
 - **`ShellyClient` is the only source of truth.** All six calls go through `watched(...)`,
-  which tells the monitor how the call ended: any answer clears the outage, any failure — no
-  connection, a timeout, a 5xx, a 200 that does not decode — starts or continues it. They all
-  go to the one device, so there is no per-relay state. A new call to the Shelly goes through
-  `watched(...)` as well.
-- **The silence is counted from the first failure after the last answer**, not from the last
-  answer: a pass that for some reason calls the device not at all proves nothing either way.
+  which tells a `ShellyCallListener` — the monitor — how the call ended: any answer clears the
+  outage, any failure starts or continues it. A failure is everything that leaves the device
+  undriven: no connection, a timeout, a 4xx or 5xx, a 200 that does not decode, a 200 without
+  a body (which completes without a value and used to count as nothing at all). They all go to
+  the one device, so there is no per-relay state. A new call to the Shelly goes through
+  `watched(...)` as well. The listener is an interface in the `client` package so that the
+  client does not depend on the services that use it.
+- **The texts say "has failed every call", not "is offline"**: a device answering 401 to
+  everything after a firmware update is not a power cut, and the alert should not send the
+  owner looking for one.
+- **The outage is counted from the first failure after the last answer, and an alert or a
+  reminder takes a failure since the monitor was last asked.** Time alone proves nothing: a
+  pass that does not call the device at all — the services skip the status read while the
+  cached entry is fresh — must not turn one old failed call into an alert.
+- **A reported outage ends with the first answer after it**, even when the next call of the
+  same pass fails again: the info goes out with that moment as the end, and the failures that
+  follow are a new outage with its own start and its own five minutes.
 - **`StatusCron` asks the monitor at the end of every pass**, after the devices were driven.
   `report()` never signals an error — a broker that is down must not fail the control pass —
   and it is deferred, because the reactive `@Scheduled` method is invoked once and
@@ -87,7 +98,11 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
 - **The state moves on only when the broker has taken the message** (correlated confirm and no
   return, `NotificationPublisher`). A failed publish is logged at ERROR and tried again with
   the next pass, as the same kind of message — so a broker outage delays an alert by a
-  minute at a time, it does not turn it into a reminder an hour later.
+  minute at a time, it does not turn it into a reminder an hour later. The other side of
+  that, accepted: a broker so slow that it confirms after the 10 s limit has taken the
+  message, and the next pass sends it again — duplicates for as long as the broker is that
+  slow. And a broker that hangs holds the end of the pass for up to about 20 s (connect and
+  confirm limits); with `fixedDelay` the next pass starts that much later.
 - **The state is in memory.** After a restart during an outage the new pod counts from its own
   first failed call and sends the alert again five minutes later; if the device returns
   before that, no info is sent, because this pod never reported it gone. A duplicate, never a
@@ -103,8 +118,12 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
 - The broker password (`rabbitmq-password`, the key `notification-password` of the secret
   `rabbitmq`) has **no default** outside the `test` document: with one the pod would start,
   turn Ready and fail every publish. The connection is opened by the first publish, so a wrong
-  password shows only with the first alert — the smoke test after a deploy is a look at the
-  log of a forced publish, not a green rollout.
+  password shows only with the first alert — a green rollout proves nothing about it. The
+  smoke test after a deploy is `GET /actuator/health` on the management port through a
+  port-forward: the RabbitMQ health indicator opens the connection, so `UP` means the broker
+  took the password and the connection shows on the broker under the pod's name. The probes do
+  not do this — the `readiness` and `liveness` groups leave the broker out, on purpose: a
+  broker that is down must not restart the service that drives the furnace.
 - The connection is named after the pod (`RabbitConfig`, the org convention of HAS-106).
 - `ShellyMonitorProperties` has a unit and both bounds: a bare number is minutes, `offline-after`
   2 min – 1 h, `reminder-interval` 5 min – 24 h.
