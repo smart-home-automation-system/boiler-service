@@ -25,9 +25,11 @@ import java.util.Set;
  * <ul>
  * <li>a pass in which any call failed is a <b>failed</b> pass - the device may answer its status
  * and refuse every command, or answer one call in ten, and is not driven either way;</li>
- * <li>a pass without a failed call <b>proves</b> the device works only when it answered every kind
- * of call that had been failing - status reads say nothing about a device that refuses commands;</li>
- * <li>any other pass - one that did not call the device, or not in the way that failed - says
+ * <li>a pass without a failed call <b>proves</b> the device works when it answered every kind of
+ * call that had been failing - status reads say nothing about a device that refuses commands - or,
+ * failing that, when it answered and nothing has failed for {@code offlineAfter}: a command is
+ * sent only when a relay has to change, and an outage must not stay open for days waiting for one;</li>
+ * <li>any other pass - one that did not call the device, or not yet in the way that failed - says
  * nothing: it neither ends an outage nor lets one be announced.</li>
  * </ul>
  * The state lives in memory, like the rest of this service. After a restart in the middle of an
@@ -132,7 +134,8 @@ public class ShellyAvailabilityMonitor implements ShellyCallListener {
 
     private synchronized Pass closePass(final Instant now) {
         final boolean failed = !failedInPass.isEmpty();
-        final boolean proven = !failed && !answeredInPass.isEmpty() && answeredInPass.containsAll(failing);
+        final boolean proven = !failed && !answeredInPass.isEmpty()
+            && (answeredInPass.containsAll(failing) || quietFor(properties.offlineAfter(), now));
         answeredInPass.clear();
         failedInPass.clear();
 
@@ -142,14 +145,17 @@ public class ShellyAvailabilityMonitor implements ShellyCallListener {
                     || reportedOutageSince == null && lastsAtLeast(failingSince, now, properties.offlineAfter());
             } else if (proven) {
                 endOutage(now);
-            } else if (reportedOutageSince == null && !alertDue
-                && lastsAtLeast(lastFailureAt, now, properties.offlineAfter())) {
+            } else if (reportedOutageSince == null && !alertDue && quietFor(properties.offlineAfter(), now)) {
                 //a failure nothing followed for as long as the limit: not an outage that is going
                 //on, and not something a failure hours later should be counted from
                 forgetFailures();
             }
         }
         return new Pass(now, failed, alertDue, failingSince, reportedOutageSince, reportedOutageEndedAt, lastReportAt);
+    }
+
+    private boolean quietFor(final Duration limit, final Instant now) {
+        return lastFailureAt != null && lastsAtLeast(lastFailureAt, now, limit);
     }
 
     private void endOutage(final Instant now) {

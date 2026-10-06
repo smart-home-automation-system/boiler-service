@@ -54,8 +54,8 @@ neighbour makes the boiler idle rather than blocked.
 The Shelly itself is watched too. When its calls have been failing for five minutes — no
 connection, a timeout, an error status or an answer that is not one, in every control pass —
 (`boiler.shelly-monitor.offline-after`) the service publishes an alert, repeats it every hour
-(`reminder-interval`) for as long as that lasts, and publishes one info when a whole pass
-goes through again — see [Messaging](#messaging).
+(`reminder-interval`) for as long as that lasts, and publishes one info when the device is
+proven to work again — see [Messaging](#messaging).
 
 ## Run locally
 
@@ -106,7 +106,7 @@ exchange, its queues and bindings are pre-declared by the RabbitMQ infrastructur
 |---|---|---|
 | calls to the Shelly have been failing for `offline-after` (5 min), in every pass | `category=alert`, `level=error` | plain text: since when its calls fail, and that the furnace and the pumps are not being controlled |
 | they still fail, every `reminder-interval` (1 h) | `category=alert`, `level=warn` | plain text, the same with the time that has passed |
-| a reported device gets through a pass without a failed call | `category=info`, `level=info` | plain text: from when to when its calls failed |
+| a reported device gets through a pass in which what had failed works again — or it answers and nothing has failed for `offline-after` | `category=info`, `level=info` | plain text: from when to when its calls failed |
 
 Every message also carries `env` (`prod`, `dev` in the `local` profile), the other header the
 exchange routes by. A notification counts as sent only when the broker confirmed it **and**

@@ -187,6 +187,57 @@ class ShellyAvailabilityMonitorTest {
             + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:07 (7 min).");
     }
 
+    //a command is sent only when a relay has to change: without this the outage would stay open
+    //for days, and the next one would arrive as a yellow reminder dated from the old start
+    @Test
+    void should_end_the_outage_when_the_device_answers_and_nothing_has_failed_for_the_limit() {
+        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
+        when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
+
+        mixedPass();
+        after(Duration.ofMinutes(5));
+        mixedPass();
+        after(Duration.ofMinutes(4));
+        statusOnlyPass();
+
+        verify(notificationPublisher, times(0)).publishInfo(anyString());
+
+        after(Duration.ofMinutes(1));
+        statusOnlyPass();
+
+        verify(notificationPublisher).publishInfo("The Shelly in the boiler room works again."
+            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:10 (10 min).");
+
+        //and what fails after that is a new outage, with a red alert of its own
+        failedPass();
+        after(Duration.ofMinutes(5));
+        failedPass();
+
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has been failing calls since"
+            + " 2026-10-06 22:10 (5 min)." + CONSEQUENCE);
+    }
+
+    //the alert was due and the broker was down; then the passes had nothing to switch. A single
+    //failure the next day must not be announced as an outage going on since yesterday
+    @Test
+    void should_not_date_a_later_failure_from_an_outage_whose_alert_never_got_through() {
+        when(notificationPublisher.publishAlert(anyString()))
+            .thenReturn(Mono.error(new BoilerException("Notification refused by the broker: down")));
+        when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
+
+        mixedPass();
+        after(Duration.ofMinutes(6));
+        mixedPass();
+        after(Duration.ofMinutes(5));
+        statusOnlyPass();
+        after(Duration.ofHours(26));
+        mixedPass();
+
+        verify(notificationPublisher).publishInfo("The Shelly in the boiler room works again."
+            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:11 (11 min).");
+        verify(notificationPublisher, times(1)).publishAlert(anyString());
+    }
+
     //a status-only pass in between must not restart the count either
     @Test
     void should_keep_counting_across_a_pass_that_did_not_try_what_failed() {

@@ -80,14 +80,16 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
   that does not decode, a 200 without a body, and a 200 with JSON that is not the model
   (`{}` decodes into an object of nulls and used to read as "the relay is off" — each call
   now checks the one field it is made for: `output` of a status, `ison` of a command. The
-  real device was seen sending `output` in the production log; no command ran in the window
-  looked at, so `ison` rests on the Shelly documentation and on the services having read it
-  all along — **watch the first relay switch after the deploy**). A new call to the Shelly goes through
+  real device was seen sending both: `output` in the production log, `ison` in a read of
+  `/relay/0`, the endpoint the commands use). A new call to the Shelly goes through
   `watched(...)` as well. The listener is an interface in the `client` package so that the
   client does not depend on the services that use it.
 - **The device is judged by whole passes, not by single calls.** A pass in which any call
-  failed is a **failed** pass. A pass without a failure **proves** the device works only when
-  it answered every kind of call that had been failing. Every other pass — one that did not
+  failed is a **failed** pass. A pass without a failure **proves** the device works when it
+  answered every kind of call that had been failing — or, failing that, when it answered and
+  nothing has failed for `offline-after`: a command is sent only when a relay has to change,
+  and without this second way out an outage of the commands would stay open for days and the
+  next real one would arrive as a yellow reminder dated from the old start. Every other pass — one that did not
   call the device, or made only status reads while it is the commands that fail — says
   nothing. Judged call by call, two devices that are not driven would never be reported: one
   whose status reads answer while every command is refused (a firmware update changing one
