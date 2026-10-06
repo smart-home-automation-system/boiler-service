@@ -28,6 +28,13 @@ public class StatusCron {
                 log.info("Received status: water={}, heating={}", tuple.getT1().getActive(), tuple.getT2().getActive()))
             .flatMap(tuple ->
                 boilerService.controlBoilerDevices(tuple.getT1(), tuple.getT2()))
+            //every step of the pass handles its own failures; should one escape all the same, it
+            //must not take the report below with it - a device that is gone would go unannounced
+            //for as long as the error repeats
+            .onErrorResume(throwable -> {
+                log.error("Control pass failed", throwable);
+                return Mono.empty();
+            })
             //after the devices, never before: by now the monitor has heard how every call of this
             //pass ended. It reads the time and its state at subscription and signals no error
             .then(shellyAvailabilityMonitor.report());

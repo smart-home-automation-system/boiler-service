@@ -1,5 +1,6 @@
 package cloud.cholewa.boiler;
 
+import cloud.cholewa.boiler.config.ShellyMonitorProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -9,6 +10,8 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -24,6 +27,8 @@ class BoilerServiceApplicationTest {
     private RabbitTemplate rabbitTemplate;
     @Autowired
     private CachingConnectionFactory connectionFactory;
+    @Autowired
+    private ShellyMonitorProperties shellyMonitorProperties;
 
     @Test
     void contextLoads() {
@@ -32,6 +37,14 @@ class BoilerServiceApplicationTest {
     @Test
     void should_not_schedule_the_control_pass_in_tests() {
         assertThat(applicationContext.getBeanNamesForType(ScheduledAnnotationBeanPostProcessor.class)).isEmpty();
+    }
+
+    //the limits the service runs with are those of application.yaml, not the defaults of the
+    //record - and they are the owner's numbers
+    @Test
+    void should_report_the_shelly_after_five_minutes_and_remind_every_hour() {
+        assertThat(shellyMonitorProperties.offlineAfter()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(shellyMonitorProperties.reminderInterval()).isEqualTo(Duration.ofHours(1));
     }
 
     //what the notification publisher relies on and only application.yaml provides: without

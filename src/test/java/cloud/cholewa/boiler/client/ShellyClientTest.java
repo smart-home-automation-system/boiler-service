@@ -19,6 +19,7 @@ import reactor.test.StepVerifier;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
@@ -93,6 +94,29 @@ class ShellyClientTest {
         sut.getHeatingPumpStatus().as(StepVerifier::create).verifyError(BoilerException.class);
 
         verify(callListener).recordFailure();
+        verifyNoMoreInteractions(callListener);
+    }
+
+    //valid JSON of another shape decodes into an object of nulls, which read as "the relay is off"
+    @Test
+    void should_tell_the_listener_that_the_answer_was_not_the_one_of_a_shelly() {
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
+            .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .body("{\"code\": -103, \"message\": \"No handler\"}")
+            .build()
+        );
+        mockWebServer.enqueue(new MockResponse.Builder()
+            .code(HttpStatus.OK.value())
+            .addHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .body("{}")
+            .build()
+        );
+
+        sut.getFurnaceStatus().as(StepVerifier::create).verifyError(BoilerException.class);
+        sut.controlFurnace(false).as(StepVerifier::create).verifyError(BoilerException.class);
+
+        verify(callListener, times(2)).recordFailure();
         verifyNoMoreInteractions(callListener);
     }
 

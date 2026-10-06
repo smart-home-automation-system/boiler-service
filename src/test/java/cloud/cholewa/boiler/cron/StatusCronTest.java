@@ -51,6 +51,21 @@ class StatusCronTest {
         verify(boilerService, times(1)).controlBoilerDevices(any(), any());
     }
 
+    @Test
+    void should_report_the_availability_of_the_device_when_the_pass_itself_failed() {
+        final PublisherProbe<Void> report = PublisherProbe.empty();
+        when(waterClient.querySystemActive()).thenReturn(Mono.just(SystemActiveReply.builder().active(true).build()));
+        when(heatingClient.querySystemActive()).thenReturn(Mono.just(SystemActiveReply.builder().active(false).build()));
+        when(boilerService.controlBoilerDevices(any(), any())).thenReturn(Mono.error(new IllegalStateException("broken")));
+        when(shellyAvailabilityMonitor.report()).thenReturn(report.mono());
+
+        sut.updateStatus()
+            .as(StepVerifier::create)
+            .verifyComplete();
+
+        report.assertWasSubscribed();
+    }
+
     //the monitor is asked once the devices were driven: only then has it heard how the calls of
     //this pass ended, and an alert about the device must not hold up its control
     @Test

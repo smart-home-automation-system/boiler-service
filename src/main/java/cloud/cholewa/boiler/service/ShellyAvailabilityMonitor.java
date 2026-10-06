@@ -14,9 +14,14 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Tells the household when the Shelly of the boiler room stops working: an alert once every call
- * has failed for {@code offlineAfter}, a reminder every {@code reminderInterval} while that lasts,
- * and one info when the device answers again.
+ * Tells the household when the Shelly of the boiler room stops working: an alert once its calls
+ * have been failing for {@code offlineAfter}, a reminder every {@code reminderInterval} while that
+ * lasts, and one info when the device works again.
+ * <p>
+ * It judges the device by whole control passes, not by single calls. A pass in which any call
+ * failed is a failed pass - the device may answer its status and refuse every command, or answer
+ * one call in ten, and is not driven either way. Only a pass in which the device was called and
+ * nothing failed says it works. A pass that did not call the device says nothing.
  * <p>
  * The state lives in memory, like the rest of this service. After a restart in the middle of an
  * outage the new instance counts from its own first failed call, so the outage is announced a
@@ -27,50 +32,53 @@ import java.time.format.DateTimeFormatter;
 @RequiredArgsConstructor
 public class ShellyAvailabilityMonitor implements ShellyCallListener {
 
+    //the publisher bounds the wait for the broker's confirm, not a send that hangs before it - on
+    //a blocked connection, on a channel that does not open. Whatever happens there, the control
+    //pass waiting for this report goes on after this long
+    static final Duration PUBLISH_TIMEOUT = Duration.ofSeconds(30);
+
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final String DEVICE = "The Shelly in the boiler room";
-    private static final String CONSEQUENCE = " The furnace and the pumps are not being controlled.";
+    private static final String CONSEQUENCE = " The furnace and the pumps may not be controlled.";
 
     private final NotificationPublisher notificationPublisher;
     private final ShellyMonitorProperties properties;
     private final Clock clock;
 
-    //the first failed call since the device last answered; null while it answers
+    //what the calls of the pass in progress have shown so far
+    private boolean failedInPass;
+    private boolean answeredInPass;
+    //the first failed call since the last pass without one; null while the device works
     private Instant failingSince;
-    //whether a call failed since the monitor was last asked: an alert takes fresh evidence, a
-    //pass that did not call the device at all says nothing about it
-    private boolean failedSinceLastReport;
     //the start of the outage the household was told about; null when there is nothing to take back
     private Instant reportedOutageSince;
-    //the first answer after that outage was reported; it ends there, whatever happens next
+    //the end of that outage: the first pass without a failed call after it was reported
     private Instant reportedOutageEndedAt;
     private Instant lastReportAt;
 
     @Override
     public synchronized void recordAnswer() {
-        failingSince = null;
-        if (reportedOutageSince != null && reportedOutageEndedAt == null) {
-            reportedOutageEndedAt = clock.instant();
-        }
+        answeredInPass = true;
     }
 
     @Override
     public synchronized void recordFailure() {
-        failedSinceLastReport = true;
+        failedInPass = true;
         if (failingSince == null) {
             failingSince = clock.instant();
         }
     }
 
     /**
-     * Publishes what is due, if anything. Never signals an error: a notification that could not be
-     * published must not fail the control pass it follows. The state moves on only once the broker
-     * has taken the message, so a failed one is tried again with the next pass.
+     * Closes the control pass and publishes what is due, if anything. Never signals an error and
+     * never takes longer than {@link #PUBLISH_TIMEOUT}: a notification must neither fail nor stall
+     * the control of the furnace. The state moves on only once the broker has taken the message,
+     * so a failed one is tried again with the next failed pass.
      */
     public Mono<Void> report() {
         //deferred: the reactive @Scheduled method calling this is invoked once and resubscribed for
         //every run, so the time and the state have to be read at subscription
-        return Mono.defer(() -> due(snapshot(), clock.instant()))
+        return Mono.defer(() -> due(closePass(clock.instant())).timeout(PUBLISH_TIMEOUT))
             .onErrorResume(throwable -> {
                 log.error(
                     "Notification about the boiler room Shelly not published, it is tried again with the next pass:"
@@ -82,33 +90,39 @@ public class ShellyAvailabilityMonitor implements ShellyCallListener {
             });
     }
 
-    private Mono<Void> due(final State state, final Instant now) {
-        if (state.reportedOutageSince() == null) {
-            return state.failingSince() != null
-                && state.failedSinceLastReport()
-                && lastsAtLeast(state.failingSince(), now, properties.offlineAfter())
-                ? notificationPublisher.publishAlert(alertText(state.failingSince(), now))
-                    .doOnSuccess(unused -> reported(state.failingSince(), now))
+    private Mono<Void> due(final Pass pass) {
+        if (pass.reportedOutageSince() == null) {
+            return pass.failed() && lastsAtLeast(pass.failingSince(), pass.closedAt(), properties.offlineAfter())
+                ? notificationPublisher.publishAlert(alertText(pass.failingSince(), pass.closedAt()))
+                    .doOnSuccess(unused -> reported(pass.failingSince(), pass.closedAt()))
                 : Mono.empty();
         }
-        //before anything else about the device: the outage that was announced is over, even when
-        //the calls already fail again - that is a new outage, counted from its own first failure
-        if (state.reportedOutageEndedAt() != null) {
+        //before anything else: the outage that was announced is over, and the household hears it
+        //even when this pass failed again - that is a new outage, counted from its own first failure
+        if (pass.reportedOutageEndedAt() != null) {
             return notificationPublisher
-                .publishInfo(recoveryText(state.reportedOutageSince(), state.reportedOutageEndedAt()))
+                .publishInfo(recoveryText(pass.reportedOutageSince(), pass.reportedOutageEndedAt()))
                 .doOnSuccess(unused -> recovered());
         }
-        return state.failedSinceLastReport() && lastsAtLeast(state.lastReportAt(), now, properties.reminderInterval())
-            ? notificationPublisher.publishReminder(reminderText(state.reportedOutageSince(), now))
-                .doOnSuccess(unused -> reminded(now))
+        return pass.failed() && lastsAtLeast(pass.lastReportAt(), pass.closedAt(), properties.reminderInterval())
+            ? notificationPublisher.publishReminder(reminderText(pass.reportedOutageSince(), pass.closedAt()))
+                .doOnSuccess(unused -> reminded(pass.closedAt()))
             : Mono.empty();
     }
 
-    private synchronized State snapshot() {
-        final State state = new State(
-            failingSince, failedSinceLastReport, reportedOutageSince, reportedOutageEndedAt, lastReportAt);
-        failedSinceLastReport = false;
-        return state;
+    private synchronized Pass closePass(final Instant now) {
+        final boolean failed = failedInPass;
+        final boolean clean = answeredInPass && !failedInPass;
+        failedInPass = false;
+        answeredInPass = false;
+
+        if (clean) {
+            failingSince = null;
+            if (reportedOutageSince != null && reportedOutageEndedAt == null) {
+                reportedOutageEndedAt = now;
+            }
+        }
+        return new Pass(now, failed, failingSince, reportedOutageSince, reportedOutageEndedAt, lastReportAt);
     }
 
     private synchronized void reported(final Instant outageSince, final Instant now) {
@@ -131,20 +145,20 @@ public class ShellyAvailabilityMonitor implements ShellyCallListener {
         return !Duration.between(since, now).minus(limit).isNegative();
     }
 
-    //"failed every call", not "is offline": a device that answers 401 or 500 to everything is not
-    //driven either, and whoever reads the alert should not look for a power cut only
+    //"failing calls", not "offline": a device that answers 401 to every command, or one call in
+    //ten, is not driven either, and whoever reads the alert should not look for a power cut only
     private String alertText(final Instant since, final Instant now) {
-        return DEVICE + " has failed every call since " + time(since) + " (" + span(since, now) + ")."
+        return DEVICE + " has been failing calls since " + time(since) + " (" + span(since, now) + ")."
             + CONSEQUENCE;
     }
 
     private String reminderText(final Instant since, final Instant now) {
-        return DEVICE + " is still failing every call - since " + time(since) + " (" + span(since, now) + ")."
+        return DEVICE + " is still failing calls - since " + time(since) + " (" + span(since, now) + ")."
             + CONSEQUENCE;
     }
 
     private String recoveryText(final Instant since, final Instant until) {
-        return DEVICE + " answers again. Its calls failed from " + time(since) + " to " + time(until)
+        return DEVICE + " works again. Its calls failed from " + time(since) + " to " + time(until)
             + " (" + span(since, until) + ").";
     }
 
@@ -160,9 +174,10 @@ public class ShellyAvailabilityMonitor implements ShellyCallListener {
         return hours == 0 ? minutes + " min" : hours + " h " + minutes + " min";
     }
 
-    private record State(
+    private record Pass(
+        Instant closedAt,
+        boolean failed,
         Instant failingSince,
-        boolean failedSinceLastReport,
         Instant reportedOutageSince,
         Instant reportedOutageEndedAt,
         Instant lastReportAt

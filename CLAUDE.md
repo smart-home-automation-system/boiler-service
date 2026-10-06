@@ -66,7 +66,7 @@ heating pump, furnace**.
 
 A Shelly that stops answering used to show only in the log, as three skipped steps a minute,
 while the furnace kept the state it was left in. `ShellyAvailabilityMonitor` turns that into
-notifications: an **alert** (`error`) once every call has failed for
+notifications: an **alert** (`error`) once its calls have been failing for
 `boiler.shelly-monitor.offline-after` (5 min), a **reminder** (`warn`) every
 `reminder-interval` (1 h) while it lasts, one **info** when the device answers again. The
 numbers are the owner's (2026-10-06): five minutes lets a restart or a firmware update pass
@@ -74,35 +74,42 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
 (HAS-68) and will be a change in `notification-service`, not here.
 
 - **`ShellyClient` is the only source of truth.** All six calls go through `watched(...)`,
-  which tells a `ShellyCallListener` — the monitor — how the call ended: any answer clears the
-  outage, any failure starts or continues it. A failure is everything that leaves the device
-  undriven: no connection, a timeout, a 4xx or 5xx, a 200 that does not decode, a 200 without
-  a body (which completes without a value and used to count as nothing at all). They all go to
-  the one device, so there is no per-relay state. A new call to the Shelly goes through
+  which tells a `ShellyCallListener` — the monitor — how the call ended. A failure is
+  everything that leaves the device undriven: no connection, a timeout, a 4xx or 5xx, a 200
+  that does not decode, a 200 without a body, and a 200 with JSON that is not the model
+  (`{}` decodes into an object of nulls and used to read as "the relay is off" — each call
+  now checks the one field it is made for). A new call to the Shelly goes through
   `watched(...)` as well. The listener is an interface in the `client` package so that the
   client does not depend on the services that use it.
-- **The texts say "has failed every call", not "is offline"**: a device answering 401 to
-  everything after a firmware update is not a power cut, and the alert should not send the
-  owner looking for one.
-- **The outage is counted from the first failure after the last answer, and an alert or a
-  reminder takes a failure since the monitor was last asked.** Time alone proves nothing: a
-  pass that does not call the device at all — the services skip the status read while the
-  cached entry is fresh — must not turn one old failed call into an alert.
-- **A reported outage ends with the first answer after it**, even when the next call of the
-  same pass fails again: the info goes out with that moment as the end, and the failures that
-  follow are a new outage with its own start and its own five minutes.
-- **`StatusCron` asks the monitor at the end of every pass**, after the devices were driven.
-  `report()` never signals an error — a broker that is down must not fail the control pass —
-  and it is deferred, because the reactive `@Scheduled` method is invoked once and
-  resubscribed; `ShellyAvailabilityMonitorTest` subscribes twice to the same `Mono` for that.
+- **The device is judged by whole passes, not by single calls.** A pass in which any call
+  failed is a failed pass; only a pass that called the device and had no failure says it
+  works; a pass that did not call it says nothing. Judged call by call, two devices that are
+  not driven would never be reported: one whose status reads answer while every command is
+  refused (a firmware update changing one path), and one that gets a call through now and
+  then — and after an alert, every stray answer would send a green "works again" followed by
+  a new red alert five minutes later.
+- **The outage is counted from the first failed call after the last clean pass**, an alert or
+  a reminder goes out only at the end of a failed pass, and a reported outage ends with the
+  first clean pass. Time alone proves nothing: one old failed call must not become an alert
+  because passes went by.
+- **The texts say "failing calls", not "offline"**, and that the furnace and the pumps "may
+  not be controlled": a device answering 401 to its commands is not a power cut, and the
+  alert should not send the owner looking for one.
+- **`StatusCron` asks the monitor at the end of every pass**, after the devices were driven —
+  also when the pass itself ended with an error, which `StatusCron` logs and swallows first.
+  `report()` never signals an error and is cut off after 30 s (`PUBLISH_TIMEOUT`): a broker
+  that is down or hangs must neither fail nor stall the control of the furnace. It is
+  deferred, because the reactive `@Scheduled` method is invoked once and resubscribed;
+  `ShellyAvailabilityMonitorTest` subscribes twice to the same `Mono` for that.
 - **The state moves on only when the broker has taken the message** (correlated confirm and no
   return, `NotificationPublisher`). A failed publish is logged at ERROR and tried again with
   the next pass, as the same kind of message — so a broker outage delays an alert by a
   minute at a time, it does not turn it into a reminder an hour later. The other side of
   that, accepted: a broker so slow that it confirms after the 10 s limit has taken the
   message, and the next pass sends it again — duplicates for as long as the broker is that
-  slow. And a broker that hangs holds the end of the pass for up to about 20 s (connect and
-  confirm limits); with `fixedDelay` the next pass starts that much later.
+  slow. And a broker that hangs holds the end of the pass for up to 30 s; with `fixedDelay`
+  the next pass starts that much later. A pending message is tried again only at the end of
+  a failed pass — during an outage that is every pass.
 - **The state is in memory.** After a restart during an outage the new pod counts from its own
   first failed call and sends the alert again five minutes later; if the device returns
   before that, no info is sent, because this pod never reported it gone. A duplicate, never a
@@ -121,7 +128,13 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
   password shows only with the first alert — a green rollout proves nothing about it. The
   smoke test after a deploy is `GET /actuator/health` on the management port through a
   port-forward: the RabbitMQ health indicator opens the connection, so `UP` means the broker
-  took the password and the connection shows on the broker under the pod's name. The probes do
+  took the password and the connection shows on the broker under the pod's name. That proves
+  the connection, not the route: **nothing in the service can force a publish** (an endpoint
+  for it would be reachable through the gateway), so the exchange and the headers are proven
+  by running the jar outside the cluster with the Shelly pointed at a dead address and a short
+  `offline-after`, against the real broker with `env: dev`, and reading the message from
+  `notification.dev.alert` — done before the first release (HAS-109, with the admin user of the
+  broker). The probes do
   not do this — the `readiness` and `liveness` groups leave the broker out, on purpose: a
   broker that is down must not restart the service that drives the furnace.
 - The connection is named after the pod (`RabbitConfig`, the org convention of HAS-106).

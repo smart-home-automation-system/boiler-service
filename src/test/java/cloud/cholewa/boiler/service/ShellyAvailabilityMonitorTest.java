@@ -29,11 +29,16 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+/**
+ * Every test is a sequence of control passes: the calls of a pass tell the monitor how they ended,
+ * and the pass ends by asking it for its report.
+ */
 @ExtendWith(MockitoExtension.class)
 class ShellyAvailabilityMonitorTest {
 
-    private static final String ALERT_AFTER_5_MIN = "The Shelly in the boiler room has failed every call since"
-        + " 2026-10-06 22:00 (5 min). The furnace and the pumps are not being controlled.";
+    private static final String CONSEQUENCE = " The furnace and the pumps may not be controlled.";
+    private static final String ALERT_AFTER_5_MIN = "The Shelly in the boiler room has been failing calls since"
+        + " 2026-10-06 22:00 (5 min)." + CONSEQUENCE;
 
     @Mock
     private NotificationPublisher notificationPublisher;
@@ -53,167 +58,162 @@ class ShellyAvailabilityMonitorTest {
     }
 
     @Test
-    void should_publish_nothing_while_the_device_answers() {
-        sut.recordAnswer();
-        report();
-        clock.advance(Duration.ofHours(3));
-        sut.recordAnswer();
-        report();
+    void should_publish_nothing_while_the_device_works() {
+        cleanPass();
+        after(Duration.ofHours(3));
+        cleanPass();
 
         verifyNoInteractions(notificationPublisher);
     }
 
     //a restart or a firmware update of the device has to pass unnoticed
     @Test
-    void should_publish_nothing_before_the_device_has_been_silent_for_the_limit() {
-        sut.recordFailure();
-        report();
-        clock.advance(Duration.ofMinutes(4).plusSeconds(59));
-        sut.recordFailure();
-        report();
+    void should_publish_nothing_before_the_calls_have_been_failing_for_the_limit() {
+        failedPass();
+        after(Duration.ofMinutes(4).plusSeconds(59));
+        failedPass();
 
         verifyNoInteractions(notificationPublisher);
     }
 
     @Test
-    void should_alert_once_when_the_device_has_been_silent_for_the_limit() {
+    void should_alert_once_when_the_calls_have_been_failing_for_the_limit() {
         when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
 
-        failFor(Duration.ofMinutes(5));
-        report();
-        //the passes that follow, one a minute
-        failFor(Duration.ofMinutes(1));
-        report();
-        failFor(Duration.ofMinutes(1));
-        report();
+        failedPass();
+        after(Duration.ofMinutes(5));
+        failedPass();
+        after(Duration.ofMinutes(1));
+        failedPass();
+        after(Duration.ofMinutes(1));
+        failedPass();
 
         verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
         verifyNoMoreInteractions(notificationPublisher);
     }
 
-    //one answer in between and the count starts again: only an unbroken silence is an outage
+    //a pass without a failed call in between and the count starts again
     @Test
-    void should_count_the_silence_from_the_first_failure_after_the_last_answer() {
+    void should_count_from_the_first_failure_after_the_last_pass_without_one() {
         when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
 
-        failFor(Duration.ofMinutes(4));
-        sut.recordAnswer();
-        failFor(Duration.ofMinutes(4));
-        report();
+        failedPass();
+        after(Duration.ofMinutes(4));
+        cleanPass();
+        failedPass();
+        after(Duration.ofMinutes(4));
+        failedPass();
 
         verifyNoInteractions(notificationPublisher);
 
-        failFor(Duration.ofMinutes(1));
-        report();
+        after(Duration.ofMinutes(1));
+        failedPass();
 
-        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
-            + " 2026-10-06 22:04 (5 min). The furnace and the pumps are not being controlled.");
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has been failing calls since"
+            + " 2026-10-06 22:04 (5 min)." + CONSEQUENCE);
     }
 
+    //the status reads answer and every command is refused, or one call in ten gets through: the
+    //device is not driven, and single answers must not keep the alert from ever coming
     @Test
-    void should_remind_every_interval_while_the_device_stays_silent() {
+    void should_alert_when_every_pass_has_a_failed_call_although_other_calls_are_answered() {
         when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
-        when(notificationPublisher.publishReminder(anyString())).thenReturn(Mono.empty());
 
-        failFor(Duration.ofMinutes(5));
-        report();
-        failFor(Duration.ofMinutes(59));
-        report();
+        mixedPass();
+        after(Duration.ofMinutes(5));
+        mixedPass();
 
         verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
-        verifyNoMoreInteractions(notificationPublisher);
-
-        failFor(Duration.ofMinutes(1));
-        report();
-        failFor(Duration.ofMinutes(30));
-        report();
-        failFor(Duration.ofMinutes(30));
-        report();
-
-        verify(notificationPublisher).publishReminder("The Shelly in the boiler room is still failing every call -"
-            + " since 2026-10-06 22:00 (1 h 5 min). The furnace and the pumps are not being controlled.");
-        verify(notificationPublisher).publishReminder("The Shelly in the boiler room is still failing every call -"
-            + " since 2026-10-06 22:00 (2 h 5 min). The furnace and the pumps are not being controlled.");
-        verifyNoMoreInteractions(notificationPublisher);
-    }
-
-    @Test
-    void should_tell_once_when_a_reported_device_answers_again() {
-        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
-        when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
-
-        failFor(Duration.ofMinutes(5));
-        report();
-        failFor(Duration.ofMinutes(20));
-        sut.recordAnswer();
-        report();
-        clock.advance(Duration.ofMinutes(1));
-        sut.recordAnswer();
-        report();
-
-        verify(notificationPublisher).publishInfo("The Shelly in the boiler room answers again."
-            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:25 (25 min).");
-        verify(notificationPublisher, times(1)).publishAlert(anyString());
-        verifyNoMoreInteractions(notificationPublisher);
-    }
-
-    //the first call of a pass answers and the next ones fail again: the announced outage is over
-    //all the same, and what follows is a new one with a start and a limit of its own
-    @Test
-    void should_end_the_reported_outage_when_the_device_answered_and_failed_again_within_one_pass() {
-        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
-        when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
-
-        failFor(Duration.ofMinutes(5));
-        report();
-        failFor(Duration.ofMinutes(15));
-        sut.recordAnswer();
-        sut.recordFailure();
-        report();
-
-        verify(notificationPublisher).publishInfo("The Shelly in the boiler room answers again."
-            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:20 (20 min).");
-
-        failFor(Duration.ofMinutes(4));
-        report();
-        failFor(Duration.ofMinutes(1));
-        report();
-
-        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
-            + " 2026-10-06 22:20 (5 min). The furnace and the pumps are not being controlled.");
-        verify(notificationPublisher, times(2)).publishAlert(anyString());
-        verifyNoMoreInteractions(notificationPublisher);
     }
 
     //one failed call and then passes that do not call the device at all: the time goes by, but
     //nothing says the device is still failing
     @Test
-    void should_not_alert_or_remind_on_a_pass_without_a_fresh_failure() {
+    void should_not_alert_or_remind_at_the_end_of_a_pass_that_did_not_call_the_device() {
         when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
 
-        sut.recordFailure();
-        report();
-        clock.advance(Duration.ofMinutes(10));
-        report();
+        failedPass();
+        after(Duration.ofMinutes(10));
+        idlePass();
 
         verifyNoInteractions(notificationPublisher);
 
-        sut.recordFailure();
-        report();
-        clock.advance(Duration.ofHours(2));
-        report();
+        failedPass();
+        after(Duration.ofHours(2));
+        idlePass();
 
-        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
-            + " 2026-10-06 22:00 (10 min). The furnace and the pumps are not being controlled.");
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has been failing calls since"
+            + " 2026-10-06 22:00 (10 min)." + CONSEQUENCE);
+        verifyNoMoreInteractions(notificationPublisher);
+    }
+
+    @Test
+    void should_remind_every_interval_while_the_calls_keep_failing() {
+        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
+        when(notificationPublisher.publishReminder(anyString())).thenReturn(Mono.empty());
+
+        failedPass();
+        after(Duration.ofMinutes(5));
+        failedPass();
+        after(Duration.ofMinutes(59));
+        failedPass();
+
+        verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
+        verifyNoMoreInteractions(notificationPublisher);
+
+        after(Duration.ofMinutes(1));
+        failedPass();
+        after(Duration.ofMinutes(30));
+        failedPass();
+        after(Duration.ofMinutes(30));
+        failedPass();
+
+        verify(notificationPublisher).publishReminder("The Shelly in the boiler room is still failing calls -"
+            + " since 2026-10-06 22:00 (1 h 5 min)." + CONSEQUENCE);
+        verify(notificationPublisher).publishReminder("The Shelly in the boiler room is still failing calls -"
+            + " since 2026-10-06 22:00 (2 h 5 min)." + CONSEQUENCE);
+        verifyNoMoreInteractions(notificationPublisher);
+    }
+
+    @Test
+    void should_tell_once_when_a_reported_device_works_again() {
+        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
+        when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
+
+        reportedOutage();
+        after(Duration.ofMinutes(20));
+        cleanPass();
+        after(Duration.ofMinutes(1));
+        cleanPass();
+
+        verify(notificationPublisher).publishInfo("The Shelly in the boiler room works again."
+            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:25 (25 min).");
+        verify(notificationPublisher, times(1)).publishAlert(anyString());
+        verifyNoMoreInteractions(notificationPublisher);
+    }
+
+    //a device that gets one call through now and then is not back: a green message every few
+    //minutes, each followed by a new red one, would say the opposite of what is going on
+    @Test
+    void should_not_announce_the_return_of_a_device_that_still_fails_calls() {
+        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
+
+        reportedOutage();
+        after(Duration.ofMinutes(1));
+        mixedPass();
+        after(Duration.ofMinutes(1));
+        mixedPass();
+
+        verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
         verifyNoMoreInteractions(notificationPublisher);
     }
 
     //nobody was told it was gone, so nobody is told it is back
     @Test
     void should_not_announce_the_return_of_a_device_that_was_never_reported() {
-        failFor(Duration.ofMinutes(3));
-        sut.recordAnswer();
-        report();
+        failedPass();
+        after(Duration.ofMinutes(3));
+        cleanPass();
 
         verifyNoInteractions(notificationPublisher);
     }
@@ -223,16 +223,15 @@ class ShellyAvailabilityMonitorTest {
         when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
         when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
 
-        failFor(Duration.ofMinutes(5));
-        report();
-        sut.recordAnswer();
-        report();
-        failFor(Duration.ofMinutes(5));
-        report();
+        reportedOutage();
+        cleanPass();
+        failedPass();
+        after(Duration.ofMinutes(5));
+        failedPass();
 
         verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
-        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
-            + " 2026-10-06 22:05 (5 min). The furnace and the pumps are not being controlled.");
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has been failing calls since"
+            + " 2026-10-06 22:05 (5 min)." + CONSEQUENCE);
     }
 
     //the pass this follows must not fail, and a message the broker did not take is not "sent":
@@ -244,16 +243,17 @@ class ShellyAvailabilityMonitorTest {
             .thenReturn(Mono.error(new BoilerException("Notification refused by the broker: no exchange")))
             .thenReturn(Mono.empty());
 
-        failFor(Duration.ofMinutes(5));
-        report();
-        failFor(Duration.ofMinutes(1));
-        report();
-        failFor(Duration.ofMinutes(1));
-        report();
+        failedPass();
+        after(Duration.ofMinutes(5));
+        failedPass();
+        after(Duration.ofMinutes(1));
+        failedPass();
+        after(Duration.ofMinutes(1));
+        failedPass();
 
         verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
-        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has failed every call since"
-            + " 2026-10-06 22:00 (6 min). The furnace and the pumps are not being controlled.");
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has been failing calls since"
+            + " 2026-10-06 22:00 (6 min)." + CONSEQUENCE);
         verifyNoMoreInteractions(notificationPublisher);
         assertThat(logs.list)
             .filteredOn(event -> event.getLevel() == Level.ERROR)
@@ -267,28 +267,49 @@ class ShellyAvailabilityMonitorTest {
     void should_complete_when_the_publisher_throws() {
         when(notificationPublisher.publishAlert(anyString())).thenThrow(new IllegalStateException("broken"));
 
-        failFor(Duration.ofMinutes(5));
+        failedPass();
+        after(Duration.ofMinutes(5));
+        sut.recordFailure();
 
         sut.report().as(StepVerifier::create).verifyComplete();
     }
 
+    //a send that hangs on the broker connection: the control pass waiting for the report goes on
     @Test
-    void should_try_the_return_again_when_it_cannot_be_published() {
+    void should_complete_when_the_publisher_never_does() {
+        when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.never());
+
+        failedPass();
+        after(Duration.ofMinutes(5));
+        sut.recordFailure();
+
+        StepVerifier.withVirtualTime(() -> sut.report())
+            .expectSubscription()
+            .expectNoEvent(ShellyAvailabilityMonitor.PUBLISH_TIMEOUT.minusSeconds(1))
+            .thenAwait(Duration.ofSeconds(1))
+            .verifyComplete();
+    }
+
+    //the return could not be published and the calls fail again: the household still hears that
+    //the first outage ended, and the new one starts counting from its own first failure
+    @Test
+    void should_announce_the_return_first_when_it_could_not_be_published_before_a_new_outage() {
         when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
         when(notificationPublisher.publishInfo(anyString()))
             .thenReturn(Mono.error(new BoilerException("Notification was not routed to any queue: NO_ROUTE")))
             .thenReturn(Mono.empty());
 
-        failFor(Duration.ofMinutes(5));
-        report();
-        sut.recordAnswer();
-        report();
-        clock.advance(Duration.ofMinutes(1));
-        report();
-        clock.advance(Duration.ofMinutes(1));
-        report();
+        reportedOutage();
+        cleanPass();
+        after(Duration.ofMinutes(1));
+        failedPass();
+        after(Duration.ofMinutes(5));
+        failedPass();
 
-        verify(notificationPublisher, times(2)).publishInfo(anyString());
+        verify(notificationPublisher, times(2)).publishInfo("The Shelly in the boiler room works again."
+            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:05 (5 min).");
+        verify(notificationPublisher).publishAlert("The Shelly in the boiler room has been failing calls since"
+            + " 2026-10-06 22:06 (5 min)." + CONSEQUENCE);
     }
 
     //the reactive @Scheduled method calls report() once and subscribes to the same Mono for every
@@ -299,23 +320,53 @@ class ShellyAvailabilityMonitorTest {
         final Mono<Void> scheduled = sut.report();
 
         scheduled.as(StepVerifier::create).verifyComplete();
+        sut.recordFailure();
+        scheduled.as(StepVerifier::create).verifyComplete();
+
         verifyNoInteractions(notificationPublisher);
 
-        failFor(Duration.ofMinutes(5));
+        after(Duration.ofMinutes(5));
+        sut.recordFailure();
         scheduled.as(StepVerifier::create).verifyComplete();
 
         verify(notificationPublisher).publishAlert(ALERT_AFTER_5_MIN);
+    }
+
+    //two failed passes five minutes apart, the second one publishing the alert: 22:00 - 22:05
+    private void reportedOutage() {
+        failedPass();
+        after(Duration.ofMinutes(5));
+        failedPass();
+    }
+
+    private void failedPass() {
+        sut.recordFailure();
+        report();
+    }
+
+    private void cleanPass() {
+        sut.recordAnswer();
+        report();
+    }
+
+    //what a device answering its status and refusing a command looks like
+    private void mixedPass() {
+        sut.recordAnswer();
+        sut.recordFailure();
+        sut.recordAnswer();
+        report();
+    }
+
+    private void idlePass() {
+        report();
     }
 
     private void report() {
         sut.report().as(StepVerifier::create).verifyComplete();
     }
 
-    //a failed call now and another after the given time, as two passes that far apart would leave it
-    private void failFor(final Duration duration) {
-        sut.recordFailure();
+    private void after(final Duration duration) {
         clock.advance(duration);
-        sut.recordFailure();
     }
 
     private static ListAppender<ILoggingEvent> logs() {
