@@ -51,6 +51,12 @@ calls. Every HTTP client has a 5 s response timeout, and if `heating-service` or
 `water-service` cannot be reached, the client falls back to `active=false` — an unreachable
 neighbour makes the boiler idle rather than blocked.
 
+The Shelly itself is watched too. When its calls have been failing for five minutes — no
+connection, a timeout, an error status or an answer that is not one, in every control pass —
+(`boiler.shelly-monitor.offline-after`) the service publishes an alert, repeats it every hour
+(`reminder-interval`) for as long as that lasts, and publishes one info when the device is
+proven to work again — see [Messaging](#messaging).
+
 ## Run locally
 
 ```bash
@@ -70,10 +76,12 @@ mvn spring-boot:run -Dspring-boot.run.profiles=local
 > turns them back on within a minute. Override `shelly.actor.pro.boiler.host` unless that is
 > what you want.
 
-No database and no message broker — the only outbound traffic is HTTP: the Shelly Pro 4 in
-the boiler room and the two sibling services. Their addresses come from the `shelly.actor`
-and `internal.service.*` properties; the `local` profile points `heating-service` and
-`water-service` at `localhost:6002` and `localhost:6006`.
+No database. Outbound traffic is HTTP to the Shelly Pro 4 in the boiler room and to the two
+sibling services, plus RabbitMQ for the notifications. The addresses come from the
+`shelly.actor`, `internal.service.*` and `spring.rabbitmq.*` properties; the `local` profile
+points `heating-service`, `water-service` and the broker at `localhost` (6002, 6006, 5672).
+The broker password has no default: set `rabbitmq-password` (any value will do when nothing
+is to be published — the connection is opened by the first notification).
 
 ## API
 
@@ -87,3 +95,21 @@ outside the cluster the service is reached through `api-gateway-service`, which 
 
 Actuator endpoints, including the `readiness` and `liveness` health groups used by the
 Kubernetes probes, live on the management port, not on the application one.
+
+# Messaging
+
+Publishes to RabbitMQ, virtual host `/notification`, headers exchange `notification` — the
+exchange, its queues and bindings are pre-declared by the RabbitMQ infrastructure, and
+`notification-service` posts what arrives there on Discord. The service consumes nothing.
+
+| When | Headers | Payload |
+|---|---|---|
+| calls to the Shelly have been failing for `offline-after` (5 min), in every pass | `category=alert`, `level=error` | plain text: since when its calls fail, and that the furnace and the pumps are not being controlled |
+| they still fail, every `reminder-interval` (1 h) | `category=alert`, `level=warn` | plain text, the same with the time that has passed |
+| a reported device gets through a pass in which what had failed works again — or it answers and nothing has failed for `offline-after` | `category=info`, `level=info` | plain text: from when to when its calls failed |
+
+Every message also carries `env` (`prod`, `dev` in the `local` profile), the other header the
+exchange routes by. A notification counts as sent only when the broker confirmed it **and**
+did not return it as unroutable; otherwise it is logged at ERROR and tried again with the next
+pass, a minute later. The state of the monitor lives in memory: after a restart in the middle
+of an outage the alert is sent a second time.

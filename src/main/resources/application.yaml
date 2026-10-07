@@ -10,6 +10,26 @@ spring:
     # default LIMITED restores ThreadLocals only in "tap" and "handle", so traceId would be
     # missing from the MDC of every log statement inside a reactive chain
     context-propagation: auto
+  # the only thing this service does on the broker is publishing notifications, so its one
+  # connection goes straight to their virtual host
+  rabbitmq:
+    host: rabbitmq-headless
+    port: 5672
+    username: notification
+    # no default on purpose: with one the pod would start, turn Ready and fail every publish
+    password: ${rabbitmq-password}
+    virtual-host: /notification
+    connection-timeout: 10s
+    requested-heartbeat: 10s
+    # a send that returns proves nothing: the broker confirms an unroutable message too. With
+    # correlated confirms and returns the publisher learns whether the message is in a queue
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+      # defaults to false; without it the published message carries no traceparent and the
+      # trace of the control pass stops at the queue
+      observation-enabled: true
 
 server:
   port: 6200
@@ -43,6 +63,18 @@ internal:
       port: 6200
       path: "home/water/status/active"
 
+# a headers exchange, and "env" is one of the two headers it routes by
+notification:
+  exchange: notification
+  env: prod
+
+boiler:
+  shelly-monitor:
+    # a bare number is minutes. How long every call to the Shelly may fail before the
+    # household is told - a restart or a firmware update of the device fits in
+    offline-after: 5m
+    reminder-interval: 1h
+
 shelly:
   actor:
     pro.boiler:
@@ -70,6 +102,8 @@ spring:
   config:
     activate:
       on-profile: local
+  rabbitmq:
+    host: localhost
 
 server:
   port: 6007
@@ -95,12 +129,18 @@ internal:
       host: localhost
       port: 6006
 
+notification:
+  env: dev
+
 ---
 
 spring:
   config:
     activate:
       on-profile: test
+  # nothing connects to the broker in a test: the connection is opened by the first publish
+  rabbitmq:
+    password: dummy
 
 # second line of defence: SchedulingConfig does not schedule the control pass under this profile,
 # and should anything in a test call the Shelly client anyway, it must not reach the real device
