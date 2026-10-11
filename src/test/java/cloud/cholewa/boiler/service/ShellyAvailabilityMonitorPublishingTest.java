@@ -85,13 +85,52 @@ class ShellyAvailabilityMonitorPublishingTest {
         report();
 
         verify(rabbitOperations).send(eq("notification"), eq(""), messageCaptor.capture(), any(CorrelationData.class));
-        final Message message = messageCaptor.getValue();
-        assertThat(new String(message.getBody(), StandardCharsets.UTF_8)).isEqualTo(ALERT);
+        assertOnTheWire(messageCaptor.getValue(), "alert", "error", ALERT);
+    }
+
+    //the same queue as the alert, another color on Discord
+    @Test
+    void should_publish_the_reminder_as_an_alert_with_the_warn_level() {
+        brokerAnswers(confirmedFromTheConnectionThread());
+
+        alertIsDue();
+        report();
+        clock.advance(Duration.ofHours(1));
+        sut.recordFailure(ShellyCall.STATUS);
+        report();
+
+        verify(rabbitOperations, times(2))
+            .send(eq("notification"), eq(""), messageCaptor.capture(), any(CorrelationData.class));
+        assertOnTheWire(messageCaptor.getValue(), "alert", "warn", "The Shelly in the boiler room is still failing"
+            + " calls - since 2026-10-06 22:00 (1 h 5 min). The furnace and the pumps may not be controlled.");
+    }
+
+    //the news of the return goes to the other queue
+    @Test
+    void should_publish_the_recovery_with_the_info_category() {
+        brokerAnswers(confirmedFromTheConnectionThread());
+
+        alertIsDue();
+        report();
+        clock.advance(Duration.ofMinutes(1));
+        sut.recordAnswer(ShellyCall.STATUS);
+        report();
+
+        verify(rabbitOperations, times(2))
+            .send(eq("notification"), eq(""), messageCaptor.capture(), any(CorrelationData.class));
+        assertOnTheWire(messageCaptor.getValue(), "info", "info", "The Shelly in the boiler room works again."
+            + " Its calls failed from 2026-10-06 22:00 to 2026-10-06 22:06 (6 min).");
+    }
+
+    private static void assertOnTheWire(
+        final Message message, final String category, final String level, final String text
+    ) {
+        assertThat(new String(message.getBody(), StandardCharsets.UTF_8)).isEqualTo(text);
         assertThat(message.getMessageProperties().getContentType()).isEqualTo("text/plain");
         assertThat(message.getMessageProperties().getContentEncoding()).isEqualTo("UTF-8");
         assertThat(message.getMessageProperties().getHeaders())
-            .containsEntry("category", "alert")
-            .containsEntry("level", "error")
+            .containsEntry("category", category)
+            .containsEntry("level", level)
             .containsEntry("env", "dev");
     }
 
