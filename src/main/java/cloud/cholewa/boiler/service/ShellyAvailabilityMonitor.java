@@ -3,7 +3,7 @@ package cloud.cholewa.boiler.service;
 import cloud.cholewa.boiler.client.ShellyCall;
 import cloud.cholewa.boiler.client.ShellyCallListener;
 import cloud.cholewa.boiler.config.ShellyMonitorProperties;
-import cloud.cholewa.boiler.rabbit.NotificationPublisher;
+import cloud.cholewa.commons.notification.NotificationPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
