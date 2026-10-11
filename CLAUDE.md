@@ -23,8 +23,9 @@ review.
   `notification-service`. It consumes nothing.
 - No database. The `cholewa-commons` R2DBC auto-configuration stays inactive — there is no
   R2DBC on the classpath and no `database.host`; keep it that way.
-- Uses libraries: `cholewa-commons` (error handling), `smart-home-sdk` (`SystemActiveReply`
-  only), `shelly-client` (`Relay`, `ShellyPro4StatusResponse`).
+- Uses libraries: `cholewa-commons` (error handling and, since 1.8.0 / HAS-206, the
+  notification publisher and the name of the RabbitMQ connection), `smart-home-sdk`
+  (`SystemActiveReply` only), `shelly-client` (`Relay`, `ShellyPro4StatusResponse`).
 - One endpoint: `GET /home/boiler/status`, a read of the in-memory state.
 
 ## The control pass — what must not be broken
@@ -114,7 +115,7 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
   deferred, because the reactive `@Scheduled` method is invoked once and resubscribed;
   `ShellyAvailabilityMonitorTest` subscribes twice to the same `Mono` for that.
 - **The state moves on only when the broker has taken the message** (correlated confirm and no
-  return, `NotificationPublisher`). A failed publish is logged at ERROR and tried again with
+  return, `NotificationPublisher` of `cholewa-commons`). A failed publish is logged at ERROR and tried again with
   the next pass, as the same kind of message — so a broker outage delays an alert by a
   minute at a time, it does not turn it into a reminder an hour later. The other side of
   that, accepted: a broker so slow that it confirms after the 10 s limit has taken the
@@ -123,6 +124,23 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
   the next pass starts that much later. A pending alert or reminder is tried again at the end
   of the next failed pass — during an outage that is every pass; the pending news of a
   return at the end of every pass.
+- **The publisher is the library's, the two rules above are the monitor's** (HAS-206). Since
+  `cholewa-commons` 1.8.0 the service has no publisher of its own: `cholewa.notification.*` in
+  `application.yaml` switches on `cholewaNotificationPublisher` (`enabled: true`, `exchange`,
+  `env` — `prod`, `dev` in `local` — and `confirm-timeout: 10s`; before HAS-206 the keys were
+  `notification.exchange` / `notification.env`). The library retries nothing and swallows
+  nothing, so "never fail, never stall" stays in `report()` — its `onErrorResume` and the 30 s.
+  What the move changed: a refused, an unroutable and an unconfirmed message arrive as
+  `NotificationPublishException` (a `BoilerException` and Reactor's `TimeoutException`
+  before) — the monitor matches on no type, only the class named in its ERROR line differs —
+  and what the monitor chains after a publish runs on `boundedElastic`, not on the thread of
+  the broker connection; its state is `synchronized` either way. The library refuses to start
+  without the correlated confirms, the returns and the `mandatory` flag. It does **not**
+  install a returns callback — a template takes one — so `RabbitConfig` still does, for the
+  ERROR line of an unroutable message. `ShellyAvailabilityMonitorPublishingTest` runs the
+  monitor against the real library publisher over a mocked `RabbitOperations`: the wire
+  format of a notification of this service and every way a publish fails. Re-run it on every
+  bump of `cholewa-commons`.
 - **The state is in memory.** After a restart during an outage the new pod counts from its own
   first failed call and sends the alert again five minutes later; if the device returns
   before that, no info is sent, because this pod never reported it gone. A duplicate, never a
@@ -145,12 +163,16 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
   the connection, not the route: **nothing in the service can force a publish** (an endpoint
   for it would be reachable through the gateway), so the exchange and the headers are proven
   by running the jar outside the cluster with the Shelly pointed at a dead address and a short
-  `offline-after`, against the real broker with `env: dev`, and reading the message from
+  `offline-after`, against the real broker with `cholewa.notification.env: dev`, and reading the message from
   `notification.dev.alert` — done before the first release (HAS-109, with the admin user of the
   broker). The probes do
   not do this — the `readiness` and `liveness` groups leave the broker out, on purpose: a
   broker that is down must not restart the service that drives the furnace.
-- The connection is named after the pod (`RabbitConfig`, the org convention of HAS-106).
+- The connection is named after the pod (the org convention of HAS-106) by
+  `cholewaPodConnectionNameStrategy` of `cholewa-commons` since HAS-206 — the rule is the one
+  the bean in `RabbitConfig` had: `HOSTNAME` when it starts with `boiler-service-`, otherwise
+  `boiler-service-local`. Do not declare a `ConnectionNameStrategy` here: the library's backs
+  off. `BoilerServiceApplicationTest` pins that the connection factory carries it.
 - `ShellyMonitorProperties` has a unit and both bounds: a bare number is minutes, `offline-after`
   2 min – 1 h, `reminder-interval` 5 min – 24 h.
 
@@ -186,7 +208,10 @@ the first endpoint that calls the Shelly on request.
   it puts JUnit 4 on the classpath, where a JUnit 4 test compiles and never runs.
 - `BoilerServiceTest` pins the fail-safe pass: the furnace is still controlled when either
   pump fails. `BoilerServiceApplicationTest` is the only proof that the whole context starts
-  with the libraries as they are — it is what a library bump has to pass.
+  with the libraries as they are — it is what a library bump has to pass. It also pins that
+  the publisher and the connection name strategy in the context are the library's and that no
+  second one exists, and sets `HOSTNAME` to a pod name so that the connection name reads the
+  same on every machine.
 - Surefire includes only `**/*Test.java` and `**/*IT.java`; a class named `...Tests` is
   silently skipped.
 

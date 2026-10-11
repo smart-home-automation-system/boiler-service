@@ -63,10 +63,16 @@ internal:
       port: 6200
       path: "home/water/status/active"
 
-# a headers exchange, and "env" is one of the two headers it routes by
-notification:
-  exchange: notification
-  env: prod
+# the notification publisher of cholewa-commons, over the one connection above. It refuses to
+# start without the confirms, the returns and the mandatory flag set there
+cholewa:
+  notification:
+    enabled: true
+    # a headers exchange, and "env" is one of the two headers it routes by
+    exchange: notification
+    env: prod
+    # a broker that confirms later than this gets the same message again with the next pass
+    confirm-timeout: 10s
 
 boiler:
   shelly-monitor:
@@ -129,8 +135,9 @@ internal:
       host: localhost
       port: 6006
 
-notification:
-  env: dev
+cholewa:
+  notification:
+    env: dev
 
 ---
 

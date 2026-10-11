@@ -6,8 +6,8 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import cloud.cholewa.boiler.client.ShellyCall;
 import cloud.cholewa.boiler.config.ShellyMonitorProperties;
-import cloud.cholewa.boiler.infrastructure.error.BoilerException;
-import cloud.cholewa.boiler.rabbit.NotificationPublisher;
+import cloud.cholewa.commons.notification.NotificationPublishException;
+import cloud.cholewa.commons.notification.NotificationPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -222,7 +222,7 @@ class ShellyAvailabilityMonitorTest {
     @Test
     void should_not_date_a_later_failure_from_an_outage_whose_alert_never_got_through() {
         when(notificationPublisher.publishAlert(anyString()))
-            .thenReturn(Mono.error(new BoilerException("Notification refused by the broker: down")));
+            .thenReturn(Mono.error(new NotificationPublishException("Notification refused by the broker: down")));
         when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
 
         mixedPass();
@@ -257,7 +257,7 @@ class ShellyAvailabilityMonitorTest {
     @Test
     void should_announce_afterwards_an_outage_whose_alert_never_got_through() {
         when(notificationPublisher.publishAlert(anyString()))
-            .thenReturn(Mono.error(new BoilerException("Notification refused by the broker: down")));
+            .thenReturn(Mono.error(new NotificationPublishException("Notification refused by the broker: down")));
         when(notificationPublisher.publishInfo(anyString())).thenReturn(Mono.empty());
 
         failedPass();
@@ -366,7 +366,8 @@ class ShellyAvailabilityMonitorTest {
     void should_complete_and_try_again_with_the_next_pass_when_the_alert_cannot_be_published() {
         final ListAppender<ILoggingEvent> logs = logs();
         when(notificationPublisher.publishAlert(anyString()))
-            .thenReturn(Mono.error(new BoilerException("Notification refused by the broker: no exchange")))
+            .thenReturn(Mono.error(
+                new NotificationPublishException("Notification refused by the broker: no exchange")))
             .thenReturn(Mono.empty());
 
         failedPass();
@@ -385,7 +386,7 @@ class ShellyAvailabilityMonitorTest {
             .filteredOn(event -> event.getLevel() == Level.ERROR)
             .extracting(ILoggingEvent::getFormattedMessage)
             .containsExactly("Notification about the boiler room Shelly not published, it is tried again with the"
-                + " next pass: BoilerException: Notification refused by the broker: no exchange");
+                + " next pass: NotificationPublishException: Notification refused by the broker: no exchange");
     }
 
     //thrown, not signalled: the publisher is the only part that talks to the broker
@@ -422,7 +423,8 @@ class ShellyAvailabilityMonitorTest {
     void should_announce_the_return_first_when_it_could_not_be_published_before_a_new_outage() {
         when(notificationPublisher.publishAlert(anyString())).thenReturn(Mono.empty());
         when(notificationPublisher.publishInfo(anyString()))
-            .thenReturn(Mono.error(new BoilerException("Notification was not routed to any queue: NO_ROUTE")))
+            .thenReturn(Mono.error(
+                new NotificationPublishException("Notification was not routed to any queue: NO_ROUTE")))
             .thenReturn(Mono.empty());
 
         reportedOutage();
