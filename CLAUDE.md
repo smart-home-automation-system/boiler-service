@@ -167,7 +167,8 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
   not cover a wrong password, nor a missing secret key (Kubernetes stops that container
   itself); it covers a manifest that lost or renamed the `env` entry, and an empty value. The
   `local` document has a dummy default, the `test` document a value. `heating-service` carries
-  the same class - a candidate for `cholewa-commons`. The connection is opened by the first publish, so a wrong
+  the same class; two copies stay where they are - code moves into `cholewa-commons` once more
+  than three services use it (the org rule). The connection is opened by the first publish, so a wrong
   password shows only with the first alert — a green rollout proves nothing about it. The
   smoke test after a deploy is `GET /actuator/health` on the management port through a
   port-forward: the RabbitMQ health indicator opens the connection, so `UP` means the broker
