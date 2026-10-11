@@ -116,7 +116,8 @@ of an outage the alert is sent a second time.
 
 The publisher is the one of `cholewa-commons` (`NotificationPublisher`, since 1.8.0), switched
 on over the service's only connection — the same library names that connection after the pod
-(`boiler-service-<pod>`, `boiler-service-local` outside the cluster):
+(the name of the pod as it is, for example `boiler-service-5968757896-bghz5`;
+`boiler-service-local` outside the cluster):
 
 | Property | Value | Description |
 |---|---|---|
