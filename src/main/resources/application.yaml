@@ -16,7 +16,9 @@ spring:
     host: rabbitmq-headless
     port: 5672
     username: notification
-    # no default on purpose: with one the pod would start, turn Ready and fail every publish
+    # no default on purpose: with one the pod would start, turn Ready and fail every publish.
+    # Without the variable the service does not start - BrokerPasswordCheck sees to that, the
+    # binder alone would take the placeholder for the password
     password: ${rabbitmq-password}
     virtual-host: /notification
     connection-timeout: 10s
@@ -110,6 +112,9 @@ spring:
       on-profile: local
   rabbitmq:
     host: localhost
+    # a run on a workstation starts without the variable; it takes the real password only to
+    # publish a notification
+    password: ${rabbitmq-password:dummyPassword}
 
 server:
   port: 6007
