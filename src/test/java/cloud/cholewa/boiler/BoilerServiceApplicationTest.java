@@ -1,5 +1,6 @@
 package cloud.cholewa.boiler;
 
+import cloud.cholewa.boiler.config.BrokerPasswordCheck;
 import cloud.cholewa.boiler.config.ShellyMonitorProperties;
 import cloud.cholewa.boiler.service.ShellyAvailabilityMonitor;
 import cloud.cholewa.commons.notification.NotificationProperties;
@@ -45,6 +46,12 @@ class BoilerServiceApplicationTest {
 
     @Test
     void contextLoads() {
+    }
+
+    //BrokerPasswordCheckTest shows what the check does; this, that the application has it at all
+    @Test
+    void should_check_the_password_of_the_broker_at_the_start() {
+        assertThat(applicationContext.getBeansOfType(BrokerPasswordCheck.class)).hasSize(1);
     }
 
     @Test
