@@ -154,8 +154,20 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
   them. Should the service ever consume from another virtual host, that takes the
   `heating-service` shape (`NotificationRabbitConfig` there).
 - The broker password (`rabbitmq-password`, the key `notification-password` of the secret
-  `rabbitmq`) has **no default** outside the `test` document: with one the pod would start,
-  turn Ready and fail every publish. The connection is opened by the first publish, so a wrong
+  `rabbitmq`) has **no default in a document a pod runs with**: with one the pod would start,
+  turn Ready and fail every publish. That alone did not stop a pod without the variable -
+  Spring Boot's binder keeps a placeholder it cannot resolve as its text, so the password bound
+  as the string `${rabbitmq-password}`. **`BrokerPasswordCheck` (HAS-217) refuses the start**
+  when the password is missing or empty: it asks the `Environment`, which is strict about the
+  same placeholder, as a `BeanFactoryPostProcessor` - before the first bean, so before
+  anything is scheduled - and names the property and the variable. Its message never carries
+  the exception of the environment or a value (both would quote a password that holds `${`,
+  which is refused as "has no value" and would not bind correctly anyway), which is also why
+  it is a plain exception and not Boot's `InvalidConfigurationPropertyValueException`. It does
+  not cover a wrong password, nor a missing secret key (Kubernetes stops that container
+  itself); it covers a manifest that lost or renamed the `env` entry, and an empty value. The
+  `local` document has a dummy default, the `test` document a value. `heating-service` carries
+  the same class - a candidate for `cholewa-commons`. The connection is opened by the first publish, so a wrong
   password shows only with the first alert — a green rollout proves nothing about it. The
   smoke test after a deploy is `GET /actuator/health` on the management port through a
   port-forward: the RabbitMQ health indicator opens the connection, so `UP` means the broker
@@ -225,8 +237,8 @@ the first endpoint that calls the Shelly on request.
 - Run locally: `mvn spring-boot:run -Dspring-boot.run.profiles=local` — application on 6007,
   Actuator on 8007, `heating-service` and `water-service` expected on `localhost:6002` and
   `localhost:6006`. **The Shelly address is the real device in every profile but `test`, so a
-  local run switches the real relays** — ten seconds after the start. It also needs
-  `rabbitmq-password` in the environment (any value, unless a notification is to be published). With the neighbours not running
+  local run switches the real relays** — ten seconds after the start. It needs
+  `rabbitmq-password` in the environment only to publish a notification (the `local` profile has a dummy). With the neighbours not running
   locally both read as "not active", and the pass turns the pumps and the furnace off, against
   the instance in the cluster, which turns them back on within a minute. Start it locally only
   with the Shelly address overridden or with that fight understood.

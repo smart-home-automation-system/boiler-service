@@ -80,8 +80,10 @@ No database. Outbound traffic is HTTP to the Shelly Pro 4 in the boiler room and
 sibling services, plus RabbitMQ for the notifications. The addresses come from the
 `shelly.actor`, `internal.service.*` and `spring.rabbitmq.*` properties; the `local` profile
 points `heating-service`, `water-service` and the broker at `localhost` (6002, 6006, 5672).
-The broker password has no default: set `rabbitmq-password` (any value will do when nothing
-is to be published — the connection is opened by the first notification).
+The broker password (`rabbitmq-password`) has no default in the cluster: **without it, or with
+an empty one, the service does not start** and says so (`BrokerPasswordCheck`). The `local`
+profile falls back to a dummy, so a run on a workstation needs the real password only to
+publish a notification — the connection is opened by the first one.
 
 ## API
 
