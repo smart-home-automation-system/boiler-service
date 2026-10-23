@@ -13,7 +13,7 @@
 
 ![GitHub top language](https://img.shields.io/github/languages/top/smart-home-automation-system/boiler-service?style=plastic)
 ![Java](https://img.shields.io/badge/java-21-yellow?style=plastic)
-![SpringBoot](https://img.shields.io/badge/SpringBoot-4.1.1-blue?style=plastic)
+![SpringBoot](https://img.shields.io/badge/SpringBoot-4.1.2-blue?style=plastic)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_boiler-service&metric=coverage)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_boiler-service)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=smart-home-automation-system_boiler-service&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=smart-home-automation-system_boiler-service)
 
@@ -81,9 +81,13 @@ sibling services, plus RabbitMQ for the notifications. The addresses come from t
 `shelly.actor`, `internal.service.*` and `spring.rabbitmq.*` properties; the `local` profile
 points `heating-service`, `water-service` and the broker at `localhost` (6002, 6006, 5672).
 The broker password (`rabbitmq-password`) has no default in the cluster: **without it, or with
-an empty one, the service does not start** and says so (`BrokerPasswordCheck`). The `local`
+an empty one, the service does not start** and says so (`cholewa.required-properties`). The `local`
 profile falls back to a dummy, so a run on a workstation needs the real password only to
 publish a notification — the connection is opened by the first one.
+
+The control pass runs every minute on the pool of the scheduler and is bounded: a pass that has not
+ended after 3 minutes - a call hung on a dead connection - is cut off with a WARN, and the next one runs
+(HAS-306).
 
 ## API
 
