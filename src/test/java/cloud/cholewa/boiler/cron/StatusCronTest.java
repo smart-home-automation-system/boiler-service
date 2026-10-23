@@ -15,6 +15,9 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import reactor.test.publisher.PublisherProbe;
 
+import java.time.Duration;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -85,5 +88,40 @@ class StatusCronTest {
 
         control.assertWasSubscribed();
         report.assertWasSubscribed();
+    }
+    //HAS-306: a pass that never ends - a call hung on a dead connection - ends at its bound, and the next
+    //one runs: the scheduler is not held for good. The monitor still closes its pass
+    @Test
+    void should_end_a_pass_that_never_completes_at_its_bound() {
+        when(waterClient.querySystemActive()).thenReturn(Mono.never());
+        when(heatingClient.querySystemActive()).thenReturn(Mono.never());
+        final PublisherProbe<Void> report = PublisherProbe.empty();
+        when(shellyAvailabilityMonitor.report()).thenReturn(report.mono());
+
+        StepVerifier.withVirtualTime(sut::updateStatus)
+            .expectSubscription()
+            .expectNoEvent(StatusCron.LIMIT.minusSeconds(1))
+            .thenAwait(Duration.ofSeconds(1))
+            .verifyComplete();
+
+        report.assertWasSubscribed();
+    }
+
+    //Spring calls the method once and subscribes to the same Mono for every run: the pass is built anew
+    @Test
+    void should_build_the_pass_anew_for_every_run() {
+        when(waterClient.querySystemActive()).thenReturn(Mono.just(SystemActiveReply.builder().active(true).build()));
+        when(heatingClient.querySystemActive()).thenReturn(Mono.just(SystemActiveReply.builder().active(false).build()));
+        when(boilerService.controlBoilerDevices(any(), any())).thenReturn(Mono.empty());
+        final PublisherProbe<Void> report = PublisherProbe.empty();
+        when(shellyAvailabilityMonitor.report()).thenReturn(report.mono());
+
+        final Mono<Void> scheduled = sut.updateStatus();
+        scheduled.as(StepVerifier::create).verifyComplete();
+        scheduled.as(StepVerifier::create).verifyComplete();
+
+        verify(waterClient, times(2)).querySystemActive();
+        //the report is deferred in the monitor: one Mono, subscribed by every run
+        assertThat(report.subscribeCount()).isEqualTo(2);
     }
 }

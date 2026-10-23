@@ -1,10 +1,11 @@
 package cloud.cholewa.boiler;
 
-import cloud.cholewa.boiler.config.BrokerPasswordCheck;
 import cloud.cholewa.boiler.config.ShellyMonitorProperties;
 import cloud.cholewa.boiler.service.ShellyAvailabilityMonitor;
 import cloud.cholewa.commons.notification.NotificationProperties;
 import cloud.cholewa.commons.notification.NotificationPublisher;
+import cloud.cholewa.shelly.http.ShellyGen1Client;
+import cloud.cholewa.shelly.http.ShellyRpcClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionNameStrategy;
@@ -48,10 +49,26 @@ class BoilerServiceApplicationTest {
     void contextLoads() {
     }
 
-    //BrokerPasswordCheckTest shows what the check does; this, that the application has it at all
+    //RequiredPropertiesTest shows what the check does; this, that the application is given the list (HAS-306)
     @Test
     void should_check_the_password_of_the_broker_at_the_start() {
-        assertThat(applicationContext.getBeansOfType(BrokerPasswordCheck.class)).hasSize(1);
+        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[0].property"))
+            .isEqualTo("spring.rabbitmq.password");
+    }
+
+    //the one scheduled pass on a pool of its own, should another task come: with one thread a hung pass
+    //stopped every task of blinds-service on 2026-10-22 (cholewa-commons >= 1.11.0, HAS-306)
+    @Test
+    void should_give_the_scheduled_tasks_a_pool() {
+        assertThat(applicationContext.getEnvironment().getProperty("spring.task.scheduling.pool.size", Integer.class))
+            .isEqualTo(10);
+    }
+
+    //shelly-client >= 2.0.0 brings clients of its own; this service drives the device through ShellyClient
+    @Test
+    void should_leave_the_clients_of_shelly_client_out() {
+        assertThat(applicationContext.getBeanNamesForType(ShellyRpcClient.class)).isEmpty();
+        assertThat(applicationContext.getBeanNamesForType(ShellyGen1Client.class)).isEmpty();
     }
 
     @Test

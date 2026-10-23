@@ -6,13 +6,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.zalando.logbook.Logbook;
-import org.zalando.logbook.netty.LogbookClientHandler;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 
 import java.time.Duration;
 
+//The calls of every WebClient here are logged by Logbook from inside the reactive chain, with their
+//traceId: cholewa-commons >= 1.10.0 puts its exchange filter on the injected WebClient.Builder (HAS-306).
+//A LogbookClientHandler on these HttpClients would log every call a second time, without the trace
 @Configuration
 @RequiredArgsConstructor
 public class AppConfig {
@@ -39,33 +40,24 @@ public class AppConfig {
     }
 
     @Bean
-    HttpClient shellyHttpClient(final ConnectionProvider shellyConnectionProvider, final Logbook logbook) {
+    HttpClient shellyHttpClient(final ConnectionProvider shellyConnectionProvider) {
         return HttpClient.create(shellyConnectionProvider)
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-            .responseTimeout(Duration.ofSeconds(5))
-            .doOnConnected(connection -> connection
-                .addHandlerLast(new LogbookClientHandler(logbook))
-            );
+            .responseTimeout(Duration.ofSeconds(5));
     }
 
     @Bean
-    HttpClient heatingHttpClient(final ConnectionProvider heatingConnectionProvider, final Logbook logbook) {
+    HttpClient heatingHttpClient(final ConnectionProvider heatingConnectionProvider) {
         return HttpClient.create(heatingConnectionProvider)
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-            .responseTimeout(Duration.ofSeconds(5))
-            .doOnConnected(connection -> connection
-                .addHandlerLast(new LogbookClientHandler(logbook))
-            );
+            .responseTimeout(Duration.ofSeconds(5));
     }
 
     @Bean
-    HttpClient waterHttpClient(final ConnectionProvider waterConnectionProvider, final Logbook logbook) {
+    HttpClient waterHttpClient(final ConnectionProvider waterConnectionProvider) {
         return HttpClient.create(waterConnectionProvider)
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-            .responseTimeout(Duration.ofSeconds(5))
-            .doOnConnected(connection -> connection
-                .addHandlerLast(new LogbookClientHandler(logbook))
-            );
+            .responseTimeout(Duration.ofSeconds(5));
     }
 
     @Bean
