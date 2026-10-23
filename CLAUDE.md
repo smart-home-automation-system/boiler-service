@@ -23,9 +23,11 @@ review.
   `notification-service`. It consumes nothing.
 - No database. The `cholewa-commons` R2DBC auto-configuration stays inactive — there is no
   R2DBC on the classpath and no `database.host`; keep it that way.
-- Uses libraries: `cholewa-commons` (error handling and, since 1.8.0 / HAS-206, the
+- Uses libraries: `cholewa-commons` 1.11.0 (error handling and, since 1.8.0 / HAS-206, the
   notification publisher and the name of the RabbitMQ connection), `smart-home-sdk`
-  (`SystemActiveReply` only), `shelly-client` (`Relay`, `ShellyPro4StatusResponse`).
+  1.12.0 (`SystemActiveReply` only), `shelly-client` 2.1.0 (`Relay`, `ShellyPro4StatusResponse`; its own
+  clients and MQTT decoder are switched off - `shelly.client.enabled: false`, pinned by
+  `BoilerServiceApplicationTest`: the device is driven by `ShellyClient`).
 - One endpoint: `GET /home/boiler/status`, a read of the in-memory state.
 
 ## The control pass — what must not be broken
@@ -35,6 +37,17 @@ pass postpones the next one instead of overlapping with it. A pass queries both 
 `BoilerService.controlBoilerDevices` drives the devices **in a fixed order: hot water pump,
 heating pump, furnace**.
 
+- **The pass is bounded** (HAS-306, `ScheduledPass.bounded` of `cholewa-commons` 1.11.0, `StatusCron.LIMIT`
+  3 min): Spring blocks a scheduler thread until a reactive fixed-delay pass completes, and a pass hung on
+  a dead connection stopped every task of blinds-service for 1.5 h on 2026-10-22 - here it would leave
+  the furnace as it is. **The bound is above the fixed delay on purpose**: a pass may legitimately take
+  about two minutes (the two flags at 15 s, six Shelly calls at 15 s each - connect and response - and
+  30 s for a notification), and a pass cut while it drives the furnace is worse than a late one;
+  `fixedDelay` never lets two passes overlap, so the bound only ends a pass that will never end. The
+  pass is built anew for every run (`StatusCronTest` subscribes twice). **The report of the monitor runs
+  after the bound**, not inside it: a cut pass still closes the pass of the monitor (otherwise its calls
+  were counted into the next one). The scheduler has the pool of
+  10 of the library (one task today).
 - **Every step has its own `onErrorResume`** (`skip(...)`). The pass used to be a fail-fast
   `then()` chain: one slow relay reply cancelled the remaining devices, including the furnace,
   which is controlled last and then kept burning until the next successful pass (HAS-128).
@@ -54,7 +67,9 @@ heating pump, furnace**.
   boiler idle, not stuck on. `ShellyClient` does the opposite: every failure becomes a
   `BoilerException`, which the pass skips.
 - All three HTTP clients have a 5 s `responseTimeout` and a 10 s connect timeout
-  (`AppConfig`). When changing a timeout, check what it now aborts — that is how the fail-fast
+  (`AppConfig`). **No Logbook handler is put on them** (HAS-306): since `cholewa-commons` 1.10.0 the
+  injected `WebClient.Builder` carries Logbook in the reactive chain, so every call is logged once, with
+  its `traceId` - a `LogbookClientHandler` here would log it a second time, without the trace. When changing a timeout, check what it now aborts — that is how the fail-fast
   chain above became a problem.
 - The state lives in the memory of one instance. After a restart every device reads as "not
   working" until the first pass has asked the Shelly, and a second replica would drive the
@@ -157,18 +172,13 @@ unnoticed. "Urgent" means the red alert on Discord — an SMS waits for the SMS 
   `rabbitmq`) has **no default in a document a pod runs with**: with one the pod would start,
   turn Ready and fail every publish. That alone did not stop a pod without the variable -
   Spring Boot's binder keeps a placeholder it cannot resolve as its text, so the password bound
-  as the string `${rabbitmq-password}`. **`BrokerPasswordCheck` (HAS-217) refuses the start**
-  when the password is missing or empty: it asks the `Environment`, which is strict about the
-  same placeholder, as a `BeanFactoryPostProcessor` - before the first bean, so before
-  anything is scheduled - and names the property and the variable. Its message never carries
-  the exception of the environment or a value (both would quote a password that holds `${`,
-  which is refused as "has no value" and would not bind correctly anyway), which is also why
-  it is a plain exception and not Boot's `InvalidConfigurationPropertyValueException`. It does
-  not cover a wrong password, nor a missing secret key (Kubernetes stops that container
-  itself); it covers a manifest that lost or renamed the `env` entry, and an empty value. The
-  `local` document has a dummy default, the `test` document a value. `heating-service` carries
-  the same class; two copies stay where they are - code moves into `cholewa-commons` once more
-  than three services use it (the org rule). The connection is opened by the first publish, so a wrong
+  as the string `${rabbitmq-password}`. **`cholewa.required-properties` of `cholewa-commons` refuses the start**
+  when the password is missing or empty (since HAS-306; the own `BrokerPasswordCheck` of HAS-217 is
+  gone, as in heating-service): before the first bean, so before anything is scheduled, naming the
+  property and the variable, never a value. It does not cover a wrong password, nor a missing secret
+  key (Kubernetes stops that container itself); it covers a manifest that lost or renamed the `env`
+  entry, and an empty value. The `local` document has a dummy default, the `test` document a value;
+  `RequiredPropertiesTest` ties the list to the placeholder. The connection is opened by the first publish, so a wrong
   password shows only with the first alert — a green rollout proves nothing about it. The
   smoke test after a deploy is `GET /actuator/health` on the management port through a
   port-forward: the RabbitMQ health indicator opens the connection, so `UP` means the broker

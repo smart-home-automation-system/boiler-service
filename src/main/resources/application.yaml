@@ -17,7 +17,7 @@ spring:
     port: 5672
     username: notification
     # no default on purpose: with one the pod would start, turn Ready and fail every publish.
-    # Without the variable the service does not start - BrokerPasswordCheck sees to that, the
+    # Without the variable the service does not start - cholewa.required-properties sees to that, the
     # binder alone would take the placeholder for the password
     password: ${rabbitmq-password}
     virtual-host: /notification
@@ -68,6 +68,11 @@ internal:
 # the notification publisher of cholewa-commons, over the one connection above. It refuses to
 # start without the confirms, the returns and the mandatory flag set there
 cholewa:
+  # refuses the start before the first bean when the password of the broker has no value (HAS-306,
+  # in place of the own BrokerPasswordCheck of HAS-217)
+  required-properties:
+    - property: spring.rabbitmq.password
+      variable: rabbitmq-password
   notification:
     enabled: true
     # a headers exchange, and "env" is one of the two headers it routes by
@@ -84,6 +89,9 @@ boiler:
     reminder-interval: 1h
 
 shelly:
+  # shelly-client >= 2.0.0 brings its own clients and MQTT decoder; this service keeps its ShellyClient
+  client:
+    enabled: false
   actor:
     pro.boiler:
       host: 10.78.30.20
